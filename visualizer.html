@@ -1,0 +1,111 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Butterchurn – Default Export Fix</title>
+  <style>
+    html,body{margin:0;height:100%;background:#000}
+    #viz{display:block;width:100vw;height:100vh}
+    #ui{position:fixed;left:1rem;bottom:1rem;z-index:2;background:#1118;color:#fff;
+        padding:.6rem .8rem;border-radius:.6rem;font:14px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    button{margin-left:.5rem}
+  </style>
+</head>
+<body>
+  <canvas id="viz"></canvas>
+  <div id="ui">
+    <audio id="player" controls crossorigin="anonymous">
+      <source src="track.mp3" type="audio/mpeg">
+      <source src="track.wav" type="audio/wav">
+    </audio>
+    <button id="next">Next preset</button>
+  </div>
+
+  <!-- Pinned CDN builds -->
+  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
+  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+
+  <script>
+    const canvas  = document.getElementById('viz');
+    const audioEl = document.getElementById('player');
+    const nextBtn = document.getElementById('next');
+
+    // Handle both export styles: window.butterchurn OR window.butterchurn.default
+    function getBC(){
+      const bc = window.butterchurn;
+      if (!bc) return null;
+      return (typeof bc.createVisualizer === 'function') ? bc
+           : (bc.default && typeof bc.default.createVisualizer === 'function') ? bc.default
+           : null;
+    }
+    function getPresetsLib(){
+      const lib = window.butterchurnPresets;
+      if (!lib) return null;
+      return (typeof lib.getPresets === 'function') ? lib
+           : (lib.default && typeof lib.default.getPresets === 'function') ? lib.default
+           : null;
+    }
+    function webglOK(){
+      try { return !!(canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl')); }
+      catch(e){ return false; }
+    }
+
+    let ctx, src, viz, keys = [], idx = 0, BC, PRESETS;
+
+    function size(){
+      canvas.width  = canvas.clientWidth  = window.innerWidth;
+      canvas.height = canvas.clientHeight = window.innerHeight;
+      if (viz) viz.setRendererSize(canvas.clientWidth, canvas.clientHeight);
+    }
+
+    async function init(){
+      try {
+        BC = getBC();
+        PRESETS = getPresetsLib();
+        if (!BC) throw new Error('butterchurn core loaded but no createVisualizer (default export issue)');
+        if (!PRESETS) throw new Error('presets library loaded but no getPresets');
+        if (!webglOK()) throw new Error('WebGL unavailable (enable hardware acceleration)');
+
+        if (!ctx) {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          src = ctx.createMediaElementSource(audioEl);
+          src.connect(ctx.destination);
+
+          viz = BC.createVisualizer(ctx, canvas, {
+            width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1
+          });
+          viz.connectAudio(src);
+
+          const presets = PRESETS.getPresets();
+          keys = Object.keys(presets);
+          if (!keys.length) throw new Error('No presets returned');
+
+          loadPreset(0, 0.0);
+
+          function loop(){ viz.render(); requestAnimationFrame(loop); }
+          requestAnimationFrame(loop);
+
+          size();
+          window.addEventListener('resize', size);
+        }
+        if (ctx.state === 'suspended') await ctx.resume();
+      } catch (e){
+        console.error('[Init error]', e);
+        alert('Init error: ' + e.message + ' (see Console for details)');
+      }
+    }
+
+    function loadPreset(newIdx, blend = 1.5){
+      const presets = PRESETS.getPresets();
+      idx = (newIdx + keys.length) % keys.length;
+      viz.loadPreset(presets[keys[idx]], blend);
+      console.log('Loaded preset:', keys[idx]);
+    }
+
+    nextBtn.addEventListener('click', () => loadPreset(idx + 1, 1.5));
+    audioEl.addEventListener('play', init, { once:true });
+  </script>
+</body>
+</html>
