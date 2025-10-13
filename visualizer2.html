@@ -1,0 +1,233 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Visualizer – Track 2 (133 BPM)</title>
+  <style>
+    html,body{margin:0;height:100%;background:#000}
+    #viz{display:block;width:100vw;height:100vh}
+    #ui{
+      position:fixed;left:1rem;bottom:1rem;z-index:2;background:#1118;color:#fff;
+      padding:.6rem .8rem;border-radius:.6rem;font:14px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif
+    }
+    button{margin-left:.5rem}
+  </style>
+</head>
+<body>
+  <canvas id="viz"></canvas>
+  <div id="ui">
+    <audio id="player" controls crossorigin="anonymous">
+      <source src="track2.mp3" type="audio/mpeg">
+      <source src="track2.wav" type="audio/wav">
+    </audio>
+    <button id="next">Next preset</button>
+  </div>
+
+  <!-- Pinned builds -->
+  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
+  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+
+  <script>
+    // ===== utils for CDN export differences =====
+    function getBC(){
+      const bc = window.butterchurn;
+      if(!bc) return null;
+      return (typeof bc.createVisualizer === 'function') ? bc :
+             (bc.default && typeof bc.default.createVisualizer === 'function') ? bc.default : null;
+    }
+    function getPresetsLib(){
+      const lib = window.butterchurnPresets;
+      if(!lib) return null;
+      return (typeof lib.getPresets === 'function') ? lib :
+             (lib.default && typeof lib.default.getPresets === 'function') ? lib.default : null;
+    }
+    function webglOK(){
+      const c = document.createElement('canvas');
+      return !!(c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl'));
+    }
+    function clone(o){ return JSON.parse(JSON.stringify(o)); }
+
+    // ===== DOM =====
+    const canvas  = document.getElementById('viz');
+    const audioEl = document.getElementById('player');
+    const nextBtn = document.getElementById('next');
+
+    // ===== audio + viz =====
+    let ctx, src, viz, BC, PRESETS, keysAll;
+    let phase = 'A';       // 'A' percussion, 'B' pad
+    const BPM = 133;
+    const MS_PER_BAR = (60000 / BPM) * 4;  // ≈ 1804.5 ms
+    let changeTimer = null;
+
+    // curated name lists (we’ll filter to those that exist; fallback to all)
+    const PICKS_A = [
+      "fiShbRaiN - spinCycle",
+      "Yin - Chrystalline",
+      "Flexi, martin - dream",
+      "Cope - Kaleidosprint",
+      "Krash - Tunnels"
+    ];
+    const PICKS_B = [
+      "Geiss - Reaction Diffusion 2",
+      "Eo.S. - Dragon Dance",
+      "Yin - Nebula",
+      "Flexi - Water Colors"
+    ];
+
+    function size(){
+      canvas.width  = canvas.clientWidth  = window.innerWidth;
+      canvas.height = canvas.clientHeight = window.innerHeight;
+      if (viz) viz.setRendererSize(canvas.clientWidth, canvas.clientHeight);
+    }
+
+    // shape the signal feeding the visualizer (not the speakers)
+    function buildVizInput(context, mediaSource){
+      // speakers
+      mediaSource.connect(context.destination);
+
+      // visuals branch: start with a gain (master sensitivity)
+      const gain = context.createGain(); gain.gain.value = 0.95;
+
+      // tunable shelves
+      const hiShelf = context.createBiquadFilter();
+      hiShelf.type = 'highshelf'; hiShelf.frequency.value = 5500; hiShelf.gain.value = (phase === 'A') ? 3 : 0;
+
+      const lowShelf = context.createBiquadFilter();
+      lowShelf.type = 'lowshelf'; lowShelf.frequency.value = 120; lowShelf.gain.value = (phase === 'A') ? 1 : 2; // a touch more weight in B
+
+      mediaSource.connect(hiShelf);
+      hiShelf.connect(lowShelf);
+      lowShelf.connect(gain);
+
+      return gain; // connect this to viz
+    }
+
+    function stylePresetForPhase(base){
+      const p = clone(base);
+
+      // Shared: hide borders for a cleaner edge
+      p.ob_a = 0; p.ib_a = 0;
+
+      if (phase === 'A'){ // percussion-led
+        // tighter trails, crisper look
+        p.decay = Math.min(0.985, (p.decay || 0.98));
+        p.gamma = (p.gamma || 1.2);
+
+        // add per-frame: favour highs for waveform thickness, bass for tiny zoom bumps
+        p.per_frame = (p.per_frame || "") +
+          "q1 = 0.7*q1 + 0.3*bass_att; " +
+          "q3 = 0.7*q3 + 0.3*treb_att; " +
+          "zoom = zoom * (1.0 + 0.010*q1); " +
+          "wave_a = 1.0 + 2.0*q3; " +
+          "rot = rot + 0.001*(q3 - 0.5); ";
+
+        // cool cyan wave accent
+        p.wave_r = 0.05; p.wave_g = 0.95; p.wave_b = 0.85; p.wave_a = 1.0;
+
+      } else { // phase B: pad underlay, smoother & trippier
+        p.decay = 0.992;        // longer trails
+        p.gamma = 1.15;
+        // warmer magenta shapes if used
+        p.shapecolorr = 0.98; p.shapecolorg = 0.15; p.shapecolorb = 0.65; p.shapecolora = 0.9;
+
+        p.per_frame = (p.per_frame || "") +
+          "q1 = 0.85*q1 + 0.15*bass_att; " +
+          "q2 = 0.85*q2 + 0.15*mid_att; " +
+          "qE = 0.5*q1 + 0.5*q2; " +
+          "zoom = zoom * (1.0 + 0.006*qE); " +   // gentle push
+          "rot = rot + 0.0012; ";                // constant slow spin
+      }
+
+      return p;
+    }
+
+    function pickKeysForPhase(all){
+      const have = (names)=> names.filter(n => all[n]);
+      const a = have(PICKS_A);
+      const b = have(PICKS_B);
+      if (phase === 'A') return a.length ? a : Object.keys(all);
+      return b.length ? b : Object.keys(all);
+    }
+
+    function scheduleAutoChanges(){
+      if (changeTimer) clearInterval(changeTimer);
+      // A: change every 32 bars (~57.7s). B: every 48 bars (~86.6s).
+      const bars = (phase === 'A') ? 32 : 48;
+      const interval = Math.round(MS_PER_BAR * bars);
+      changeTimer = setInterval(()=> loadNext(1.6), interval);
+    }
+
+    let currentKeys = [], currentIndex = 0;
+
+    function loadByName(name, blend){
+      const all = PRESETS.getPresets();
+      const base = all[name] || all[currentKeys[0]];
+      const styled = stylePresetForPhase(base);
+      viz.loadPreset(styled, blend);
+      console.log(`[${phase}] loaded:`, name);
+    }
+
+    function loadNext(blend){
+      currentIndex = (currentIndex + 1) % currentKeys.length;
+      loadByName(currentKeys[currentIndex], blend);
+    }
+
+    async function init(){
+      try{
+        if(!webglOK()) throw new Error('WebGL unavailable (enable hardware acceleration)');
+        BC = getBC(); PRESETS = getPresetsLib();
+        if(!BC || !PRESETS) throw new Error('Libraries failed to load');
+
+        if(!ctx){
+          ctx  = new (window.AudioContext || window.webkitAudioContext)();
+          src  = ctx.createMediaElementSource(audioEl);
+
+          // create viz with current phase’s shaped input
+          const vizInput = buildVizInput(ctx, src);
+          viz = BC.createVisualizer(ctx, canvas, {
+            width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1
+          });
+          viz.connectAudio(vizInput);
+
+          const all = PRESETS.getPresets();
+          currentKeys = pickKeysForPhase(all);
+          currentIndex = 0;
+          loadByName(currentKeys[0], 0.0);
+
+          function loop(){ viz.render(); requestAnimationFrame(loop); }
+          requestAnimationFrame(loop);
+
+          size(); window.addEventListener('resize', size);
+
+          // auto changes on bar timing
+          scheduleAutoChanges();
+
+          // switch to Phase B at last third
+          audioEl.addEventListener('timeupdate', ()=> {
+            if (phase === 'A' && audioEl.duration && audioEl.currentTime / audioEl.duration > 2/3){
+              phase = 'B';
+              // rebuild viz audio chain with Phase B EQ
+              const newInput = buildVizInput(ctx, src);
+              viz.connectAudio(newInput);
+              // pick new keys & load smoothly
+              currentKeys = pickKeysForPhase(PRESETS.getPresets());
+              currentIndex = 0;
+              loadByName(currentKeys[0], 2.0);
+              scheduleAutoChanges();
+            }
+          });
+        }
+        if (ctx.state === 'suspended') await ctx.resume();
+      }catch(e){
+        console.error(e);
+        alert('Init error: ' + e.message);
+      }
+    }
+
+    nextBtn.addEventListener('click', ()=> loadNext(1.2));
+    audioEl.addEventListener('play', init, { once:true });
+  </script>
+</body>
+</html>
