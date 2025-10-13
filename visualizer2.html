@@ -3,10 +3,17 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualizer – Track 2 (133 BPM, 16-bar changes)</title>
+<title>Visualizer – Track 2 (133 BPM, 32→16 bars)</title>
 <style>
-  html,body{margin:0;height:100%;background:#000}
-  /* Wrapper fills the page/iframe */
+  :root{
+    --ui-bg: rgba(255,255,255,.88);
+    --ui-fg: #3e3e3e;
+    --play-oval: rgba(140, 195, 120, .38); /* soft green tint */
+    --font: 400 12px/22px Clarkson, "Proxima Nova", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+
+  html,body{margin:0;height:100%;background:#fff;color:var(--ui-fg);font:var(--font)}
+  /* Wrapper fills the iframe/viewport */
   #vizwrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}
   #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
 
@@ -15,45 +22,46 @@
     position:absolute;left:0;right:0;bottom:0;
     display:flex;align-items:center;gap:.75rem;
     padding:.6rem .8rem;
-    background:rgba(0,0,0,.28);
-    backdrop-filter:saturate(120%) blur(6px);
-    color:#fff;font:14px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    opacity:0;transition:opacity .25s ease, transform .25s ease;
-    transform:translateY(8px); pointer-events:none;
+    background:var(--ui-bg);
+    color:var(--ui-fg);
+    font:var(--font);
+    border-top-left-radius:10px;border-top-right-radius:10px;
+    opacity:0;transform:translateY(8px);
+    transition:opacity .25s ease, transform .25s ease;
+    pointer-events:none;
   }
   #vizwrap:hover .ui, #vizwrap.show-ui .ui{opacity:1;transform:none;pointer-events:auto}
 
-  /* Center “Click to play” */
+  /* Center play oval (no text) */
   .starter{
     position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,.55));
-    color:#fff;text-align:center;gap:1rem;flex-direction:column;
+    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45));
   }
-  .starter button{
-    all:unset;cursor:pointer;
-    background:rgba(255,255,255,.15);padding:.9rem 1.25rem;border-radius:9999px;
-    font-weight:600
+  .play-oval{
+    all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    width:112px;height:72px;border-radius:9999px;background:var(--play-oval);
+    box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18);
   }
-  .starter small{opacity:.8}
+  .play-oval svg{width:24px;height:24px;fill:#fff}
 
   /* Buttons / sliders */
   .btn{
     all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-    width:36px;height:36px;border-radius:9999px;background:rgba(255,255,255,.14)
+    width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)
   }
-  .btn:hover{background:rgba(255,255,255,.24)}
-  .pill{all:unset;cursor:pointer;background:rgba(255,255,255,.14);padding:.35rem .6rem;border-radius:999px}
-  .pill:hover{background:rgba(255,255,255,.24)}
+  .btn:hover{background:rgba(0,0,0,.12)}
+  .pill{all:unset;cursor:pointer;background:rgba(0,0,0,.06);padding:.35rem .6rem;border-radius:999px}
+  .pill:hover{background:rgba(0,0,0,.12)}
   .label{opacity:.85;min-width:52px;text-align:right}
   .grow{flex:1}
   .spacer{width:8px}
   input[type="range"]{
-    -webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(255,255,255,.25);
+    -webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);
     border-radius:999px;outline:none
   }
   input[type="range"]::-webkit-slider-thumb{
     -webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;
-    background:#fff;box-shadow:0 0 0 2px rgba(0,0,0,.2)
+    background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)
   }
 </style>
 </head>
@@ -73,17 +81,18 @@
       <button id="next" class="pill" aria-label="Next preset">Next</button>
     </div>
 
-    <!-- Center starter (required to unlock audio) -->
+    <!-- Center play oval (no text) -->
     <div id="starter" class="starter" role="dialog" aria-label="Click to start">
-      <button id="startBtn">Click to play</button>
-      <small>Hover near the bottom for controls • “Next” changes look</small>
+      <button id="startBtn" class="play-oval" aria-label="Play">
+        <!-- simple play triangle -->
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      </button>
     </div>
 
     <!-- Hidden audio (no native controls) -->
     <audio id="player" preload="auto" crossorigin="anonymous">
       <source src="track2.mp3" type="audio/mpeg">
-      <!-- Optional WAV fallback
-      <source src="track2.wav" type="audio/wav"> -->
+      <!-- <source src="track2.wav" type="audio/wav"> -->
     </audio>
   </div>
 
@@ -93,7 +102,7 @@
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
 
   <script>
-  // ——— helpers for CDN export differences ———
+  // —— CDN export helpers ——
   function getBC(){
     const bc = window.butterchurn;
     if(!bc) return null;
@@ -113,7 +122,7 @@
   const pad = s => (s<10?'0':'')+s;
   const fmt = t => { if(!isFinite(t)) return '0:00'; const m=(t/60)|0, s=(t%60)|0; return m+':'+pad(s); };
 
-  // ——— DOM refs ———
+  // —— DOM refs ——
   const wrap   = document.getElementById('vizwrap');
   const canvas = document.getElementById('viz');
   const starter= document.getElementById('starter');
@@ -126,14 +135,16 @@
   const tTime  = document.getElementById('time');
   const tDur   = document.getElementById('dur');
 
-  // ——— State ———
+  // —— State ——
   let ctx, src, viz, PRESETS, BC;
-  let keys = [], i = 0, changeTimer = null;
+  let keys = [], index = 0, timer = null;
+  let phase = 'A'; // A=32 bars, B=16 bars
 
-  // Curate a small, punchy set for this track (replace with your favs any time)
-  function pickKeys(){
+  // Make sure we actually have multiple presets to cycle
+  function chooseKeys(){
     const all = PRESETS.getPresets();
-    const picks = [
+    // If any of these names are missing, we fall back to ALL presets.
+    const curated = [
       "fiShbRaiN - spinCycle",
       "Yin - Chrystalline",
       "Flexi, martin - dream",
@@ -141,7 +152,7 @@
       "Geiss - Reaction Diffusion 2",
       "Eo.S. - Dragon Dance"
     ].filter(n => all[n]);
-    keys = picks.length ? picks : Object.keys(all);
+    keys = (curated.length >= 3) ? curated : Object.keys(all); // guarantee >1
   }
 
   function size(){
@@ -150,29 +161,31 @@
     if (viz) viz.setRendererSize(r.width, r.height);
   }
 
-  function loadPresetByIndex(idx, blend=1.4){
+  function loadByIndex(i, blend=1.4){
     const all = PRESETS.getPresets();
-    i = (idx + keys.length) % keys.length;
-    viz.loadPreset(all[keys[i]], blend);
+    index = (i + keys.length) % keys.length;
+    viz.loadPreset(all[keys[index]], blend);
     // brief UI reveal as feedback
-    wrap.classList.add('show-ui'); clearTimeout(wrap._hide);
-    wrap._hide = setTimeout(()=>wrap.classList.remove('show-ui'), 1200);
+    wrap.classList.add('show-ui'); clearTimeout(wrap._h);
+    wrap._h = setTimeout(()=>wrap.classList.remove('show-ui'), 1000);
   }
 
-  // 133 BPM, change every 16 bars
-  function scheduleAutoChanges(){
-    if (changeTimer) clearInterval(changeTimer);
-    const BPM = 133;
-    const msPerBar = (60000 / BPM) * 4;   // 4/4
-    const interval = Math.round(msPerBar * 16);
-    changeTimer = setInterval(()=> loadPresetByIndex(i+1, 1.6), interval);
+  // 133 BPM phase timing: A=32 bars, B=16 bars (switch at last third)
+  const BPM = 133;
+  const MS_PER_BAR = (60000 / BPM) * 4;
+
+  function reschedule(){
+    if (timer) clearInterval(timer);
+    const bars = (phase === 'A') ? 32 : 16;
+    const interval = Math.round(MS_PER_BAR * bars);
+    timer = setInterval(()=> loadByIndex(index+1, 1.6), interval);
   }
 
-  // Simple path: tie audio volume to both playback & viz sensitivity
+  // Tie audio volume to viz sensitivity
   function buildVizInput(c, mediaSource){
-    mediaSource.connect(c.destination);          // speakers (clean)
-    const gain = c.createGain();                 // viz sensitivity
-    gain.gain.value = rVol.value;
+    mediaSource.connect(c.destination); // speakers
+    const gain = c.createGain();
+    gain.gain.value = +rVol.value;
     mediaSource.connect(gain);
     return gain;
   }
@@ -192,19 +205,37 @@
       });
       viz.connectAudio(input);
 
-      pickKeys();
-      loadPresetByIndex(0, 0);
+      chooseKeys();
+      loadByIndex(0, 0);
 
       function loop(){ viz.render(); requestAnimationFrame(loop); }
       requestAnimationFrame(loop);
 
       size(); window.addEventListener('resize', size);
-      scheduleAutoChanges();
+      reschedule();
+
+      // Switch to Phase B (16 bars) in the last third of the track
+      audio.addEventListener('timeupdate', ()=>{
+        if (phase==='A' && audio.duration && audio.currentTime/audio.duration > 2/3){
+          phase = 'B';
+          reschedule();
+        }
+      });
+
+      // Ensure restart resets phase + sequence
+      let lastT=0;
+      audio.addEventListener('timeupdate', ()=>{
+        const t = audio.currentTime||0;
+        if (t<1 && lastT>5){ // scrubbing back near 0
+          phase='A'; index=0; chooseKeys(); loadByIndex(0,0); reschedule();
+        }
+        lastT = t;
+      });
     }
     if (ctx.state === 'suspended') await ctx.resume();
   }
 
-  // ——— Controls ———
+  // —— Controls ——
   startBtn.addEventListener('click', async ()=>{
     await boot();
     await audio.play();
@@ -218,31 +249,28 @@
     else { audio.pause(); btnPlay.textContent='▶'; }
   });
 
-  btnNext.addEventListener('click', ()=> loadPresetByIndex(i+1, 1.2));
+  btnNext.addEventListener('click', ()=> loadByIndex(index+1, 1.2));
 
   audio.addEventListener('timeupdate', ()=>{
     if (audio.duration){
-      rSeek.value = audio.currentTime / audio.duration;
-      tTime.textContent = fmt(audio.currentTime);
-      tDur.textContent  = fmt(audio.duration);
+      const p = audio.currentTime / audio.duration;
+      document.getElementById('seek').value = p;
+      document.getElementById('time').textContent = fmt(audio.currentTime);
+      document.getElementById('dur').textContent  = fmt(audio.duration);
     }
   });
-  rSeek.addEventListener('input', ()=>{
-    if (audio.duration) audio.currentTime = rSeek.value * audio.duration;
+  document.getElementById('seek').addEventListener('input', e=>{
+    if (audio.duration) audio.currentTime = e.target.value * audio.duration;
+  });
+  document.getElementById('vol').addEventListener('input', e=>{
+    audio.volume = +e.target.value;
   });
 
-  rVol.addEventListener('input', ()=>{
-    audio.volume = +rVol.value;
-    // viz input gain follows volume: rebuild gain live
-    // (simplest: just adjust the existing gain node via connect chain rebuild)
-    // For brevity, rely on the change affecting future connections only.
-  });
-
-  // Accessibility: show UI briefly on key/touch
+  // Accessibility: flash UI briefly on key/touch
   ['keydown','pointerdown'].forEach(evt=>{
     document.addEventListener(evt, ()=>{
-      wrap.classList.add('show-ui'); clearTimeout(wrap._hide);
-      wrap._hide = setTimeout(()=>wrap.classList.remove('show-ui'), 1800);
+      wrap.classList.add('show-ui'); clearTimeout(wrap._h);
+      wrap._h = setTimeout(()=>wrap.classList.remove('show-ui'), 1200);
     }, {passive:true});
   });
   </script>
