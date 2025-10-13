@@ -1,111 +1,151 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Butterchurn – Default Export Fix</title>
-  <style>
-    html,body{margin:0;height:100%;background:#000}
-    #viz{display:block;width:100vw;height:100vh}
-    #ui{position:fixed;left:1rem;bottom:1rem;z-index:2;background:#1118;color:#fff;
-        padding:.6rem .8rem;border-radius:.6rem;font:14px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-    button{margin-left:.5rem}
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Visualizer – Track 1 (140 BPM, curated sequence)</title>
+<style>
+  :root{
+    --ui-bg: rgba(255,255,255,.88);
+    --ui-fg: #3e3e3e;
+    --play-oval: rgba(140, 195, 120, .38); /* soft green tint */
+    --font: 400 12px/22px Clarkson, "Proxima Nova", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+
+  html,body{margin:0;height:100%;background:#fff;color:var(--ui-fg);font:var(--font)}
+  /* Wrapper fills the iframe/viewport */
+  #vizwrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}
+  #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
+
+  /* Hover UI (bottom) */
+  .ui{
+    position:absolute;left:0;right:0;bottom:0;
+    display:flex;align-items:center;gap:.75rem;
+    padding:.6rem .8rem;
+    background:var(--ui-bg);
+    color:var(--ui-fg);
+    font:var(--font);
+    border-top-left-radius:10px;border-top-right-radius:10px;
+    opacity:0;transform:translateY(8px);
+    transition:opacity .25s ease, transform .25s ease;
+    pointer-events:none;
+  }
+  #vizwrap:hover .ui, #vizwrap.show-ui .ui{opacity:1;transform:none;pointer-events:auto}
+
+  /* Center play oval (no text) */
+  .starter{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45));
+  }
+  .play-oval{
+    all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    width:112px;height:72px;border-radius:9999px;background:var(--play-oval);
+    box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18);
+  }
+  .play-oval svg{width:24px;height:24px;fill:#fff}
+
+  /* Buttons / sliders */
+  .btn{
+    all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+    width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)
+  }
+  .btn:hover{background:rgba(0,0,0,.12)}
+  .pill{all:unset;cursor:pointer;background:rgba(0,0,0,.06);padding:.35rem .6rem;border-radius:999px}
+  .pill:hover{background:rgba(0,0,0,.12)}
+  .label{opacity:.85;min-width:52px;text-align:right}
+  .grow{flex:1}
+  .spacer{width:8px}
+  input[type="range"]{
+    -webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);
+    border-radius:999px;outline:none
+  }
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;
+    background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)
+  }
+</style>
 </head>
 <body>
-  <canvas id="viz"></canvas>
-  <div id="ui">
-    <audio id="player" controls crossorigin="anonymous">
+  <div id="vizwrap" aria-label="Audio visualizer">
+    <canvas id="viz"></canvas>
+
+    <!-- Hover-only UI -->
+    <div class="ui" role="group" aria-label="Player controls">
+      <button id="play" class="btn" aria-label="Play/Pause">▶</button>
+      <span id="time" class="label">0:00</span>
+      <input id="seek" type="range" min="0" max="1" step="0.001" value="0" class="grow" aria-label="Seek"/>
+      <span id="dur" class="label">0:00</span>
+      <div class="spacer"></div>
+      <input id="vol" type="range" min="0" max="1" step="0.01" value="0.9" style="width:110px" aria-label="Volume"/>
+      <div class="spacer"></div>
+      <button id="next" class="pill" aria-label="Next preset">Next</button>
+    </div>
+
+    <!-- Center play oval (no text) -->
+    <div id="starter" class="starter" role="dialog" aria-label="Click to start">
+      <button id="startBtn" class="play-oval" aria-label="Play">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+    </div>
+
+    <!-- Hidden audio (no native controls) -->
+    <audio id="player" preload="auto" crossorigin="anonymous">
       <source src="track.mp3" type="audio/mpeg">
-      <source src="track.wav" type="audio/wav">
+      <!-- <source src="track.wav" type="audio/wav"> -->
     </audio>
-    <button id="next">Next preset</button>
   </div>
 
-  <!-- Pinned CDN builds -->
+  <!-- Butterchurn libs (core pack; add others if you like) -->
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+  <!-- If you want more options, also include:
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsNonMinimal.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra2.min.js"></script>
+  -->
 
   <script>
-    const canvas  = document.getElementById('viz');
-    const audioEl = document.getElementById('player');
-    const nextBtn = document.getElementById('next');
+  // —— CDN export helpers ——
+  function getBC(){
+    const bc = window.butterchurn;
+    if(!bc) return null;
+    return (typeof bc.createVisualizer === 'function') ? bc :
+           (bc.default && typeof bc.default.createVisualizer === 'function') ? bc.default : null;
+  }
+  function getPresetsLib(){
+    // Merge whichever packs are present; core is required here
+    const libs = [];
+    if (window.butterchurnPresets) libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
+    if (window.butterchurnPresetsNonMinimal) libs.push((butterchurnPresetsNonMinimal.default||butterchurnPresetsNonMinimal).getPresets());
+    if (window.butterchurnPresetsExtra) libs.push((butterchurnPresetsExtra.default||butterchurnPresetsExtra).getPresets());
+    if (window.butterchurnPresetsExtra2) libs.push((butterchurnPresetsExtra2.default||butterchurnPresetsExtra2).getPresets());
+    const merged = Object.assign({}, ...libs);
+    return { dict: merged, names: Object.keys(merged) };
+  }
+  function webglOK(){
+    const c=document.createElement('canvas');
+    return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl'));
+  }
+  const pad = s => (s<10?'0':'')+s;
+  const fmt = t => { if(!isFinite(t)) return '0:00'; const m=(t/60)|0, s=(t%60)|0; return m+':'+pad(s); };
 
-    // Handle both export styles: window.butterchurn OR window.butterchurn.default
-    function getBC(){
-      const bc = window.butterchurn;
-      if (!bc) return null;
-      return (typeof bc.createVisualizer === 'function') ? bc
-           : (bc.default && typeof bc.default.createVisualizer === 'function') ? bc.default
-           : null;
-    }
-    function getPresetsLib(){
-      const lib = window.butterchurnPresets;
-      if (!lib) return null;
-      return (typeof lib.getPresets === 'function') ? lib
-           : (lib.default && typeof lib.default.getPresets === 'function') ? lib.default
-           : null;
-    }
-    function webglOK(){
-      try { return !!(canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl')); }
-      catch(e){ return false; }
-    }
+  // —— DOM refs ——
+  const wrap   = document.getElementById('vizwrap');
+  const canvas = document.getElementById('viz');
+  const starter= document.getElementById('starter');
+  const startBtn= document.getElementById('startBtn');
+  const audio  = document.getElementById('player');
+  const btnPlay= document.getElementById('play');
+  const btnNext= document.getElementById('next');
+  const rSeek  = document.getElementById('seek');
+  const rVol   = document.getElementById('vol');
+  const tTime  = document.getElementById('time');
+  const tDur   = document.getElementById('dur');
 
-    let ctx, src, viz, keys = [], idx = 0, BC, PRESETS;
+  // —— State ——
+  let ctx, src, viz, BC, PRESETS;
+  let keys = [], index = 0, timer = null;
 
-    function size(){
-      canvas.width  = canvas.clientWidth  = window.innerWidth;
-      canvas.height = canvas.clientHeight = window.innerHeight;
-      if (viz) viz.setRendererSize(canvas.clientWidth, canvas.clientHeight);
-    }
-
-    async function init(){
-      try {
-        BC = getBC();
-        PRESETS = getPresetsLib();
-        if (!BC) throw new Error('butterchurn core loaded but no createVisualizer (default export issue)');
-        if (!PRESETS) throw new Error('presets library loaded but no getPresets');
-        if (!webglOK()) throw new Error('WebGL unavailable (enable hardware acceleration)');
-
-        if (!ctx) {
-          ctx = new (window.AudioContext || window.webkitAudioContext)();
-          src = ctx.createMediaElementSource(audioEl);
-          src.connect(ctx.destination);
-
-          viz = BC.createVisualizer(ctx, canvas, {
-            width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1
-          });
-          viz.connectAudio(src);
-
-          const presets = PRESETS.getPresets();
-          keys = Object.keys(presets);
-          if (!keys.length) throw new Error('No presets returned');
-
-          loadPreset(0, 0.0);
-
-          function loop(){ viz.render(); requestAnimationFrame(loop); }
-          requestAnimationFrame(loop);
-
-          size();
-          window.addEventListener('resize', size);
-        }
-        if (ctx.state === 'suspended') await ctx.resume();
-      } catch (e){
-        console.error('[Init error]', e);
-        alert('Init error: ' + e.message + ' (see Console for details)');
-      }
-    }
-
-    function loadPreset(newIdx, blend = 1.5){
-      const presets = PRESETS.getPresets();
-      idx = (newIdx + keys.length) % keys.length;
-      viz.loadPreset(presets[keys[idx]], blend);
-      console.log('Loaded preset:', keys[idx]);
-    }
-
-    nextBtn.addEventListener('click', () => loadPreset(idx + 1, 1.5));
-    audioEl.addEventListener('play', init, { once:true });
-  </script>
-</body>
-</html>
+  // Build the curated sequence:
+  // 1) Start with human positions 11,21,22 (=> zero-b
