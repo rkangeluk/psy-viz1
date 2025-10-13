@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualizer – Track 1 (140 BPM, curated sequence)</title>
+<title>Visualizer – Track 1 (140 BPM, curated)</title>
 <style>
   :root{
     --ui-bg: rgba(255,255,255,.88);
@@ -13,11 +13,10 @@
   }
 
   html,body{margin:0;height:100%;background:#fff;color:var(--ui-fg);font:var(--font)}
-  /* Wrapper fills the iframe/viewport */
   #vizwrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}
   #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
 
-  /* Hover UI (bottom) */
+  /* Hover UI */
   .ui{
     position:absolute;left:0;right:0;bottom:0;
     display:flex;align-items:center;gap:.75rem;
@@ -32,7 +31,7 @@
   }
   #vizwrap:hover .ui, #vizwrap.show-ui .ui{opacity:1;transform:none;pointer-events:auto}
 
-  /* Center play oval (no text) */
+  /* Center play oval (icon only) */
   .starter{
     position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45));
@@ -81,7 +80,7 @@
       <button id="next" class="pill" aria-label="Next preset">Next</button>
     </div>
 
-    <!-- Center play oval (no text) -->
+    <!-- Center play oval -->
     <div id="starter" class="starter" role="dialog" aria-label="Click to start">
       <button id="startBtn" class="play-oval" aria-label="Play">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
@@ -95,57 +94,27 @@
     </audio>
   </div>
 
-  <!-- Butterchurn libs (core pack; add others if you like) -->
+  <!-- Butterchurn libs (core pack) -->
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
-  <!-- If you want more options, also include:
+  <!-- Optional extra packs:
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsNonMinimal.min.js"></script>
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra2.min.js"></script>
   -->
 
   <script>
-  // —— CDN export helpers ——
+  // —— helpers ——
   function getBC(){
     const bc = window.butterchurn;
     if(!bc) return null;
     return (typeof bc.createVisualizer === 'function') ? bc :
            (bc.default && typeof bc.default.createVisualizer === 'function') ? bc.default : null;
   }
-  function getPresetsLib(){
-    // Merge whichever packs are present; core is required here
+  function mergePresetPacks(){
     const libs = [];
     if (window.butterchurnPresets) libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
     if (window.butterchurnPresetsNonMinimal) libs.push((butterchurnPresetsNonMinimal.default||butterchurnPresetsNonMinimal).getPresets());
     if (window.butterchurnPresetsExtra) libs.push((butterchurnPresetsExtra.default||butterchurnPresetsExtra).getPresets());
-    if (window.butterchurnPresetsExtra2) libs.push((butterchurnPresetsExtra2.default||butterchurnPresetsExtra2).getPresets());
-    const merged = Object.assign({}, ...libs);
-    return { dict: merged, names: Object.keys(merged) };
-  }
-  function webglOK(){
-    const c=document.createElement('canvas');
-    return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl'));
-  }
-  const pad = s => (s<10?'0':'')+s;
-  const fmt = t => { if(!isFinite(t)) return '0:00'; const m=(t/60)|0, s=(t%60)|0; return m+':'+pad(s); };
-
-  // —— DOM refs ——
-  const wrap   = document.getElementById('vizwrap');
-  const canvas = document.getElementById('viz');
-  const starter= document.getElementById('starter');
-  const startBtn= document.getElementById('startBtn');
-  const audio  = document.getElementById('player');
-  const btnPlay= document.getElementById('play');
-  const btnNext= document.getElementById('next');
-  const rSeek  = document.getElementById('seek');
-  const rVol   = document.getElementById('vol');
-  const tTime  = document.getElementById('time');
-  const tDur   = document.getElementById('dur');
-
-  // —— State ——
-  let ctx, src, viz, BC, PRESETS;
-  let keys = [], index = 0, timer = null;
-
-  // Build the curated sequence:
-  // 1) Start with human positions 11,21,22 (=> zero-b
+    if (window.butt
