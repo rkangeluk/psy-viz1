@@ -3,39 +3,26 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualizer – Track 3 (134 BPM, bass-heavy minimal)</title>
+<title>Visualizer 3 – Failsafe (134 BPM)</title>
 <style>
-  :root{
-    --ui-bg: rgba(255,255,255,.88);
-    --ui-fg: #3e3e3e;
-    --play-oval: rgba(140, 195, 120, .38);
-    --font: 400 12px/22px Clarkson, "Proxima Nova", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  }
+  :root{ --ui-bg: rgba(255,255,255,.88); --ui-fg:#3e3e3e; --play-oval: rgba(140,195,120,.38);
+         --font: 400 12px/22px Clarkson, "Proxima Nova", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; }
   html,body{margin:0;height:100%;background:#000;color:var(--ui-fg);font:var(--font)}
   #vizwrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}
   #viz{position:absolute;inset:0;display:block;width:100%;height:100%;background:#000}
-
-  .ui{
-    position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.75rem;
-    padding:.6rem .8rem;background:var(--ui-bg);color:var(--ui-fg);font:var(--font);
-    border-top-left-radius:10px;border-top-right-radius:10px;opacity:0;transform:translateY(8px);
-    transition:opacity .25s ease, transform .25s ease;pointer-events:none;
-  }
+  .ui{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.75rem;
+      padding:.6rem .8rem;background:var(--ui-bg);color:var(--ui-fg);font:var(--font);
+      border-top-left-radius:10px;border-top-right-radius:10px;opacity:0;transform:translateY(8px);
+      transition:opacity .25s ease, transform .25s ease;pointer-events:none;}
   #vizwrap:hover .ui, #vizwrap.show-ui .ui{opacity:1;transform:none;pointer-events:auto}
-
   .starter{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45))}
-  .play-oval{
-    all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
-    width:112px;height:72px;border-radius:9999px;background:var(--play-oval);
-    box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18)
-  }
+           background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45))}
+  .play-oval{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
+             width:112px;height:72px;border-radius:9999px;background:var(--play-oval);
+             box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18)}
   .play-oval svg{width:24px;height:24px;fill:#fff}
-
-  .btn{
-    all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-    width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)
-  }
+  .btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+       width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)}
   .btn:hover{background:rgba(0,0,0,.12)}
   .pill{all:unset;cursor:pointer;background:rgba(0,0,0,.06);padding:.35rem .6rem;border-radius:999px}
   .pill:hover{background:rgba(0,0,0,.12)}
@@ -43,11 +30,16 @@
   .grow{flex:1}.spacer{width:8px}
   input[type="range"]{-webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none}
   input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
+  /* On-screen status */
+  #status{position:absolute;left:8px;bottom:58px;padding:6px 8px;background:rgba(0,0,0,.55);color:#fff;
+          font:11px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; border-radius:6px; max-width:60ch; white-space:pre-line}
 </style>
 </head>
 <body>
   <div id="vizwrap" aria-label="Audio visualizer">
     <canvas id="viz"></canvas>
+
+    <div id="status">ready</div>
 
     <div class="ui" role="group" aria-label="Player controls">
       <button id="play" class="btn" aria-label="Play/Pause">▶</button>
@@ -67,10 +59,97 @@
     </div>
 
     <audio id="player" preload="auto" crossorigin="anonymous">
+      <!-- If your file is actually .mps, change to track3.mps or add a second <source> -->
       <source src="track3.mp3" type="audio/mpeg">
     </audio>
   </div>
 
-  <!-- Packs -->
+  <!-- Butterchurn core only (to remove variables) -->
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
-  <script src
+  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+
+  <script>
+  // -------- helpers & status --------
+  const $ = sel => document.querySelector(sel);
+  const status = msg => { console.log('[viz3]', msg); $('#status').textContent = String(msg); };
+  const pad = s => (s<10?'0':'')+s;
+  const fmt = t => (!isFinite(t)?'0:00': ((t/60)|0)+':'+pad((t%60)|0));
+  function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
+
+  // -------- DOM --------
+  const wrap = $('#vizwrap'), canvas=$('#viz'), starter=$('#starter'), startBtn=$('#startBtn');
+  const audio=$('#player'), btnPlay=$('#play'), btnNext=$('#next'), rSeek=$('#seek'), rVol=$('#vol'), tTime=$('#time'), tDur=$('#dur');
+
+  // -------- state --------
+  let ctx, src, viz, PRESET_DICT, PRESET_NAMES;
+  let keys=[], index=0, timer=null, phase='A', switched=false, autoChangeCount=0;
+
+  // -------- sizing --------
+  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; viz && viz.setRendererSize(r.width,r.height); }
+
+  // -------- presets (CORE ONLY, by index for stability) --------
+  function initCorePresets(){
+    if (!window.butterchurnPresets){ throw new Error('core presets lib missing'); }
+    const lib = (butterchurnPresets.default || butterchurnPresets);
+    PRESET_DICT = lib.getPresets();
+    PRESET_NAMES = Object.keys(PRESET_DICT);
+    if (!PRESET_NAMES.length) throw new Error('no presets found in core');
+    status('core presets: '+PRESET_NAMES.length);
+    // simple long list: start on the 3rd, then step by 3s so we don’t repeat too fast
+    const stride=3;
+    const seq = [];
+    for (let i=2;i<PRESET_NAMES.length;i+=stride) seq.push(PRESET_NAMES[i]);
+    if (seq.length<8) { // fallback in tiny lists
+      for (let i=0;i<PRESET_NAMES.length;i++) seq.push(PRESET_NAMES[i]);
+    }
+    return seq;
+  }
+
+  function styleForPhase(preset){
+    const p = JSON.parse(JSON.stringify(preset));
+    p.ob_a=0; p.ib_a=0;
+    if (phase==='A'){ p.decay=Math.min(0.985, p.decay||0.98); p.gamma=p.gamma||1.2; }
+    else { p.decay=0.992; p.gamma=1.15; }
+    return p;
+  }
+
+  function loadByIndex(i, blend=1.0){
+    if (!keys.length) keys = initCorePresets();
+    index = ((i%keys.length)+keys.length)%keys.length;
+    const name = keys[index];
+    const base = PRESET_DICT[name];
+    viz.loadPreset(styleForPhase(base), blend);
+    wrap.classList.add('show-ui'); clearTimeout(wrap._h); wrap._h=setTimeout(()=>wrap.classList.remove('show-ui'), 800);
+    status('loaded preset: '+name);
+  }
+
+  // -------- timing --------
+  const BPM=134, MS_PER_BAR=(60000/BPM)*4, BAR80_TIME=MS_PER_BAR*80;
+  function cadenceBars(){ return (autoChangeCount<2)?16:32; }
+  function reschedule(){
+    if (timer) clearInterval(timer);
+    const interval=Math.round(MS_PER_BAR*cadenceBars());
+    timer=setInterval(()=>{
+      loadByIndex(index+1, 1.0);
+      autoChangeCount++;
+      if (autoChangeCount===2) reschedule();
+    }, interval);
+    status('auto every '+interval+'ms');
+  }
+  function scheduleBar80(){
+    const msLeft = Math.max(0, BAR80_TIME - (audio.currentTime*1000||0));
+    setTimeout(()=>{
+      if (!switched){
+        phase='B'; switched=true;
+        if (timer){ clearInterval(timer); timer=null; }
+        status('BAR80 → force next preset');
+        loadByIndex(index+1, 0.9);
+        reschedule();
+      }
+    }, msLeft);
+  }
+
+  // -------- audio routing (super simple) --------
+  function buildVizInput(c, mediaSource){
+    med
