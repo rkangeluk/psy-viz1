@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualizer 3 – Failsafe (134 BPM)</title>
+<title>Visualizer 3 – Failsafe v2 (134 BPM)</title>
 <style>
   :root{ --ui-bg: rgba(255,255,255,.88); --ui-fg:#3e3e3e; --play-oval: rgba(140,195,120,.38);
          --font: 400 12px/22px Clarkson, "Proxima Nova", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; }
@@ -30,7 +30,6 @@
   .grow{flex:1}.spacer{width:8px}
   input[type="range"]{-webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none}
   input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
-  /* On-screen status */
   #status{position:absolute;left:8px;bottom:58px;padding:6px 8px;background:rgba(0,0,0,.55);color:#fff;
           font:11px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; border-radius:6px; max-width:60ch; white-space:pre-line}
 </style>
@@ -52,62 +51,56 @@
       <button id="next" class="pill" aria-label="Next preset">Next</button>
     </div>
 
+    <!-- Inline onclick as an extra guard so clicks can’t be “eaten” -->
     <div id="starter" class="starter" role="dialog" aria-label="Click to start">
-      <button id="startBtn" class="play-oval" aria-label="Play">
+      <button id="startBtn" class="play-oval" aria-label="Play" onclick="window._vizStart && window._vizStart()">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
       </button>
     </div>
 
     <audio id="player" preload="auto" crossorigin="anonymous">
-      <!-- If your file is actually .mps, change to track3.mps or add a second <source> -->
       <source src="track3.mp3" type="audio/mpeg">
+      <!-- If your file is really .mps, you can add: <source src="track3.mps" type="audio/mpeg"> -->
     </audio>
   </div>
 
-  <!-- Butterchurn core only (to remove variables) -->
+  <!-- Core libs only (most reliable) -->
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
 
   <script>
-  // -------- helpers & status --------
-  const $ = sel => document.querySelector(sel);
-  const status = msg => { console.log('[viz3]', msg); $('#status').textContent = String(msg); };
+  // ===== tiny helpers/diagnostics =====
+  const $ = s => document.querySelector(s);
+  const status = (m) => { try { console.log('[viz3]', m); } catch(_){}; const el=$('#status'); if(el) el.textContent=String(m); };
   const pad = s => (s<10?'0':'')+s;
   const fmt = t => (!isFinite(t)?'0:00': ((t/60)|0)+':'+pad((t%60)|0));
-  function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
+  const webglOK = () => { const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); };
 
-  // -------- DOM --------
-  const wrap = $('#vizwrap'), canvas=$('#viz'), starter=$('#starter'), startBtn=$('#startBtn');
+  // ===== DOM =====
+  const wrap=$('#vizwrap'), canvas=$('#viz'), starter=$('#starter'), startBtn=$('#startBtn');
   const audio=$('#player'), btnPlay=$('#play'), btnNext=$('#next'), rSeek=$('#seek'), rVol=$('#vol'), tTime=$('#time'), tDur=$('#dur');
 
-  // -------- state --------
+  // ===== state =====
   let ctx, src, viz, PRESET_DICT, PRESET_NAMES;
   let keys=[], index=0, timer=null, phase='A', switched=false, autoChangeCount=0;
 
-  // -------- sizing --------
-  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; viz && viz.setRendererSize(r.width,r.height); }
-
-  // -------- presets (CORE ONLY, by index for stability) --------
+  // ===== presets: core only, by index =====
   function initCorePresets(){
     if (!window.butterchurnPresets){ throw new Error('core presets lib missing'); }
-    const lib = (butterchurnPresets.default || butterchurnPresets);
-    PRESET_DICT = lib.getPresets();
-    PRESET_NAMES = Object.keys(PRESET_DICT);
+    const lib=(butterchurnPresets.default||butterchurnPresets);
+    PRESET_DICT=lib.getPresets(); PRESET_NAMES=Object.keys(PRESET_DICT);
     if (!PRESET_NAMES.length) throw new Error('no presets found in core');
-    status('core presets: '+PRESET_NAMES.length);
-    // simple long list: start on the 3rd, then step by 3s so we don’t repeat too fast
-    const stride=3;
-    const seq = [];
-    for (let i=2;i<PRESET_NAMES.length;i+=stride) seq.push(PRESET_NAMES[i]);
-    if (seq.length<8) { // fallback in tiny lists
-      for (let i=0;i<PRESET_NAMES.length;i++) seq.push(PRESET_NAMES[i]);
-    }
+    // Start on 3rd, then step by 3s
+    const seq=[]; for(let i=2;i<PRESET_NAMES.length;i+=3) seq.push(PRESET_NAMES[i]);
+    if (seq.length<8) seq.push(...PRESET_NAMES);
     return seq;
   }
 
+  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; if(viz) viz.setRendererSize(r.width,r.height); }
+
   function styleForPhase(preset){
-    const p = JSON.parse(JSON.stringify(preset));
+    const p=JSON.parse(JSON.stringify(preset));
     p.ob_a=0; p.ib_a=0;
     if (phase==='A'){ p.decay=Math.min(0.985, p.decay||0.98); p.gamma=p.gamma||1.2; }
     else { p.decay=0.992; p.gamma=1.15; }
@@ -115,16 +108,15 @@
   }
 
   function loadByIndex(i, blend=1.0){
-    if (!keys.length) keys = initCorePresets();
-    index = ((i%keys.length)+keys.length)%keys.length;
-    const name = keys[index];
-    const base = PRESET_DICT[name];
+    if (!keys.length) keys=initCorePresets();
+    index=((i%keys.length)+keys.length)%keys.length;
+    const name=keys[index], base=PRESET_DICT[name];
     viz.loadPreset(styleForPhase(base), blend);
     wrap.classList.add('show-ui'); clearTimeout(wrap._h); wrap._h=setTimeout(()=>wrap.classList.remove('show-ui'), 800);
     status('loaded preset: '+name);
   }
 
-  // -------- timing --------
+  // ===== timing =====
   const BPM=134, MS_PER_BAR=(60000/BPM)*4, BAR80_TIME=MS_PER_BAR*80;
   function cadenceBars(){ return (autoChangeCount<2)?16:32; }
   function reschedule(){
@@ -143,71 +135,63 @@
       if (!switched){
         phase='B'; switched=true;
         if (timer){ clearInterval(timer); timer=null; }
-        status('BAR80 → force next preset');
+        status('BAR80 → next preset');
         loadByIndex(index+1, 0.9);
         reschedule();
       }
     }, msLeft);
   }
 
-  // -------- audio routing (super simple) --------
+  // ===== audio routing =====
   function buildVizInput(c, mediaSource){
-    mediaSource.connect(c.destination);                    // speakers
-    const g=c.createGain(); g.gain.value=+rVol.value;      // visuals
+    mediaSource.connect(c.destination);               // speakers
+    const g=c.createGain(); g.gain.value=+rVol.value; // visuals
     mediaSource.connect(g);
     return g;
   }
 
-  // -------- boot --------
+  // ===== boot =====
   async function boot(){
-    try{
-      status('boot…');
-      if (!webglOK()) throw new Error('WebGL unavailable (enable Hardware Acceleration)');
-      const BC = (window.butterchurn && (butterchurn.createVisualizer?butterchurn:butterchurn.default)) || null;
-      if (!BC) throw new Error('butterchurn core not loaded');
+    status('boot…');
+    if (!webglOK()) throw new Error('WebGL unavailable (enable Hardware Acceleration)');
+    const BC=(window.butterchurn && (butterchurn.createVisualizer?butterchurn:butterchurn.default))||null;
+    if (!BC) throw new Error('butterchurn core not loaded');
+    keys = initCorePresets();
 
-      // init presets first (so we can fail fast if CDN blocked)
-      keys = initCorePresets();
+    if (!ctx){
+      ctx=new (window.AudioContext||window.webkitAudioContext)();
+      src=ctx.createMediaElementSource(audio);
+      viz=BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
+      viz.connectAudio(buildVizInput(ctx, src));
 
-      if (!ctx){
-        ctx = new (window.AudioContext||window.webkitAudioContext)();
-        src = ctx.createMediaElementSource(audio);
+      index=0; autoChangeCount=0; phase='A'; switched=false;
+      loadByIndex(index, 0.0);
 
-        viz = BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
-        viz.connectAudio(buildVizInput(ctx, src));
+      (function loop(){ viz.render(); requestAnimationFrame(loop); })();
+      size(); window.addEventListener('resize', size);
 
-        index = 0; autoChangeCount=0; phase='A'; switched=false;
-        loadByIndex(index, 0.0);
+      reschedule(); scheduleBar80();
 
-        (function loop(){ viz.render(); requestAnimationFrame(loop); })();
-        size(); window.addEventListener('resize', size);
-
-        reschedule();
-        scheduleBar80();
-
-        // UI wiring
-        let lastT=0;
-        audio.addEventListener('timeupdate', ()=>{
-          const t=audio.currentTime||0;
-          if (audio.duration){ rSeek.value=t/audio.duration; tTime.textContent=fmt(t); tDur.textContent=fmt(audio.duration); }
-          if (t<1 && lastT>5){ index=0; autoChangeCount=0; phase='A'; switched=false; loadByIndex(0,0); reschedule(); scheduleBar80(); }
-          lastT=t;
-        });
-        audio.addEventListener('error',()=>{ status('AUDIO ERROR: '+(audio.currentSrc||'no src')); console.error('audio error', audio.networkState, audio.currentSrc); });
-        audio.addEventListener('loadedmetadata',()=> status('audio loaded: '+(audio.currentSrc||'')+' • '+fmt(audio.duration)));
-      }
-      if (ctx.state==='suspended'){ await ctx.resume(); }
-      status('boot ok — click play');
-    }catch(e){
-      console.error(e); status('BOOT ERROR: '+e.message);
-      throw e;
+      // time UI + restart
+      let lastT=0;
+      audio.addEventListener('timeupdate', ()=>{
+        const t=audio.currentTime||0;
+        if (audio.duration){ rSeek.value=t/audio.duration; tTime.textContent=fmt(t); tDur.textContent=fmt(audio.duration); }
+        if (t<1 && lastT>5){ index=0; autoChangeCount=0; phase='A'; switched=false; loadByIndex(0,0); reschedule(); scheduleBar80(); }
+        lastT=t;
+      });
+      audio.addEventListener('loadedmetadata',()=> status('audio loaded: '+(audio.currentSrc||'')+' • '+fmt(audio.duration)));
+      audio.addEventListener('error',()=> status('AUDIO ERROR: '+(audio.currentSrc||'(no src)')));
     }
+    if (ctx.state==='suspended'){ await ctx.resume(); }
+    status('boot ok — click play');
   }
 
-  // -------- start & controls --------
-  async function startPlayback(){
+  // ===== global starter (can’t be swallowed) =====
+  window._vizStart = async function(){
     try{
-      await boot();
+      if (!ctx) await boot();
+      if (ctx.state==='suspended') await ctx.resume();
       await audio.play();
       starter.style.display='none';
       btnPlay.textContent='⏸';
@@ -215,20 +199,23 @@
     }catch(e){
       console.error('play failed', e, 'src=', audio.currentSrc);
       status('PLAY ERROR: '+(e && e.message? e.message : e));
-      alert('Could not start audio. Check file name/URL and try again.');
+      alert('Could not start audio. Check the file URL/name and try again.');
     }
-  }
-  startBtn.addEventListener('click', startPlayback);
-  starter.addEventListener('click', e=>{ if(e.target===starter) startPlayback(); });
-  canvas.addEventListener('click', startPlayback);
-  document.addEventListener('keydown', e=>{ if(e.code==='Space'||e.key==='Enter') startPlayback(); });
+  };
+
+  // Fire boot on the first interaction ANYWHERE (extra safety)
+  document.addEventListener('pointerdown', ()=>{ if(!ctx){ window._vizStart(); } }, {once:true, passive:true});
+  // Keep the usual controls too
+  startBtn.addEventListener('click', ()=> window._vizStart());
+  canvas.addEventListener('click', ()=> window._vizStart());
+  document.addEventListener('keydown', e=>{ if(e.code==='Space'||e.key==='Enter') window._vizStart(); });
 
   btnPlay.addEventListener('click', async ()=>{
     try{
       if (!ctx) await boot();
       if (audio.paused){ await audio.play(); btnPlay.textContent='⏸'; status('playing…'); }
       else { audio.pause(); btnPlay.textContent='▶'; status('paused'); }
-    }catch(e){ console.error(e); status('PLAY/PAUSE ERROR: '+e.message); }
+    }catch(e){ console.error(e); status('PLAY/PAUSE ERROR: '+(e.message||e)); }
   });
   btnNext.addEventListener('click', ()=> loadByIndex(index+1, 0.9));
   rSeek.addEventListener('input', e=>{ if(audio.duration) audio.currentTime = e.target.value * audio.duration; });
