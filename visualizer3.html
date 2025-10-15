@@ -89,11 +89,10 @@
     <!-- Hidden audio -->
     <audio id="player" preload="auto" crossorigin="anonymous">
       <source src="track3.mp3" type="audio/mpeg">
-      <!-- <source src="track3.wav" type="audio/wav"> -->
     </audio>
   </div>
 
-  <!-- Butterchurn core + extra packs (bigger pool for a fresh “pack”) -->
+  <!-- Butterchurn core + extras -->
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
@@ -122,7 +121,7 @@
   const pad = s => (s<10?'0':'')+s;
   const fmt = t => { if(!isFinite(t)) return '0:00'; const m=(t/60)|0, s=(t%60)|0; return m+':'+pad(s); };
 
-  // seeded shuffle for consistent per-track order
+  // seeded shuffle so this track has a unique, repeatable pack order
   function seededShuffle(arr, seedStr){
     let seed = 0; for (let i=0;i<seedStr.length;i++) seed = (seed*31 + seedStr.charCodeAt(i))>>>0;
     function rnd(){ seed = (1664525*seed + 1013904223)>>>0; return (seed & 0xfffffff)/0x10000000; }
@@ -147,17 +146,16 @@
   // ===== state =====
   let ctx, src, viz, BC, PRESETS;
   let keys = [], index = 0, timer = null;
-  let phase = 'A'; // A=32 bars, B=16 bars after bar 80
+  let phase = 'A';           // A = intro section, B = vocals/pad
+  let autoChangeCount = 0;   // to do 16 bars twice, then 32 thereafter
 
   // Build a “new pack” filtered to bass/minimal/trippy keywords, then seed-shuffle
   function buildPack(){
     const names = PRESETS.names;
-    const reA = /(tunnel|spiral|kaleid|vortex|wormhole|fractal|nebula|minimal|grid|lines|rings|radial)/i;
-    const filtered = names.filter(n => reA.test(n));
+    const re = /(tunnel|spiral|kaleid|vortex|wormhole|fractal|nebula|minimal|grid|lines|rings|radial)/i;
+    const filtered = names.filter(n => re.test(n));
     const base = filtered.length >= 10 ? filtered : names; // ensure enough
-    const shuffled = seededShuffle(base, 'track3-bass-minimal');
-    // Start with 2 assertive looks, then the rest
-    return shuffled;
+    return seededShuffle(base, 'track3-bass-minimal');
   }
 
   function size(){
@@ -167,19 +165,18 @@
   }
 
   function styleForPhase(preset){
-    // make a copy and add subtle bass-forward behavior
     const p = JSON.parse(JSON.stringify(preset));
     p.ob_a = 0; p.ib_a = 0;                     // clean edges
-    if (phase === 'A'){                         // percussion/bass forward
+    if (phase === 'A'){                         // bass-forward, tight trails
       p.decay = Math.min(0.985, p.decay || 0.98);
       p.gamma = p.gamma || 1.2;
-      p.wave_r=0.1; p.wave_g=0.95; p.wave_b=0.85; p.wave_a=1; // cool cyan wave
+      p.wave_r=0.1; p.wave_g=0.95; p.wave_b=0.85; p.wave_a=1;
       p.per_frame = (p.per_frame||"") +
         "q1=0.75*q1+0.25*bass_att; zoom=zoom*(1.0+0.012*q1); rot=rot+0.0008*(q1-0.5);";
-    } else {                                    // vocals / pad glow
+    } else {                                    // vocals/pad glow
       p.decay = 0.992;
       p.gamma = 1.15;
-      p.shapecolorr=0.98; p.shapecolorg=0.15; p.shapecolorb=0.65; p.shapecolora=0.9; // warm magenta accent
+      p.shapecolorr=0.98; p.shapecolorg=0.15; p.shapecolorb=0.65; p.shapecolora=0.9;
       p.per_frame = (p.per_frame||"") +
         "q1=0.85*q1+0.15*bass_att; q2=0.85*q2+0.15*mid_att; qE=0.6*q1+0.4*q2; zoom=zoom*(1.0+0.007*qE); rot=rot+0.0012;";
     }
@@ -196,16 +193,23 @@
     wrap._h = setTimeout(()=>wrap.classList.remove('show-ui'), 1000);
   }
 
-  // Timing: 134 BPM
+  // Timing & cadence
   const BPM = 134;
-  const MS_PER_BAR = (60000 / BPM) * 4;       // ≈1791.0 ms
-  const BAR80_TIME = MS_PER_BAR * 80;         // switch point for vocals
-
+  const MS_PER_BAR = (60000 / BPM) * 4;      // ≈1791 ms
+  const BAR80_TIME = MS_PER_BAR * 80;        // vocals start (phase switch)
+  function cadenceBars(){
+    // First two auto transitions at 16 bars, then 32 bars for the rest
+    return (autoChangeCount < 2) ? 16 : 32;
+  }
   function reschedule(){
     if (timer) clearInterval(timer);
-    const bars = (phase === 'A') ? 32 : 16;
-    const interval = Math.round(MS_PER_BAR * bars);
-    timer = setInterval(()=> loadByIndex(index+1, 1.6), interval);
+    const interval = Math.round(MS_PER_BAR * cadenceBars());
+    timer = setInterval(()=>{
+      loadByIndex(index+1, 1.6);
+      autoChangeCount++;
+      // reschedule in case we just crossed from 16→32 cadence
+      if (autoChangeCount === 2) reschedule();
+    }, interval);
   }
 
   function buildVizInput(c, mediaSource){
@@ -214,14 +218,14 @@
     // Visuals branch with bass emphasis
     const lowShelf = c.createBiquadFilter(); lowShelf.type='lowshelf'; lowShelf.frequency.value=120; lowShelf.gain.value=+4;
     const hiShelf  = c.createBiquadFilter(); hiShelf.type='highshelf'; hiShelf.frequency.value=4500; hiShelf.gain.value=-2;
-    const gain     = c.createGain(); gain.gain.value = +rVol.value; // tie to UI volume
+    const gain     = c.createGain(); gain.gain.value = +rVol.value;
     mediaSource.connect(lowShelf); lowShelf.connect(hiShelf); hiShelf.connect(gain);
     return gain;
   }
 
   async function boot(){
     if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return; }
-    BC = getBC();
+    const BC = getBC();
     const merged = mergePresetPacks();
     if (!BC || !merged.names.length) { alert('Preset libraries failed to load.'); return; }
     PRESETS = merged;
@@ -235,8 +239,10 @@
       viz.connectAudio(input);
 
       keys = buildPack();
-      index = 0;
-      loadByIndex(0, 0);
+      // start from the THIRD preset in the new pack
+      index = 2;                 // zero-based (so this is “third”)
+      autoChangeCount = 0;       // reset cadence tracker
+      loadByIndex(index, 0);
 
       function loop(){ viz.render(); requestAnimationFrame(loop); }
       requestAnimationFrame(loop);
@@ -244,7 +250,7 @@
       size(); window.addEventListener('resize', size);
       reschedule();
 
-      // Switch to Phase B at bar 80
+      // Bar-80 phase switch (styling only, cadence stays per cadenceBars)
       let switched = false, lastT=0;
       audio.addEventListener('timeupdate', ()=>{
         const t = audio.currentTime||0;
@@ -255,14 +261,15 @@
         }
         if (!switched && t*1000 >= BAR80_TIME){
           phase = 'B'; switched = true;
-          // reload current preset with Phase B styling and speed up cadence
-          loadByIndex(index, 2.0);
-          reschedule();
+          loadByIndex(index, 2.0); // reload current with Phase B styling
+          // cadence remains whatever cadenceBars() dictates
         }
         // Reset if scrubbing back to start
         if (t<1 && lastT>5){
-          phase='A'; switched=false; index=0;
-          keys = buildPack(); loadByIndex(0,0); reschedule();
+          phase='A'; switched=false;
+          keys = buildPack();
+          index = 2; autoChangeCount = 0;
+          loadByIndex(index, 0); reschedule();
         }
         lastT = t;
       });
@@ -272,7 +279,6 @@
 
   // ===== start + controls =====
   function showErr(e){ console.error('Start/play error:', e); alert('Could not start audio. See console for details.'); }
-
   async function startPlayback(){
     try{
       if (!ctx) await boot();
