@@ -3,26 +3,44 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualizer 3 – Failsafe v2 (134 BPM)</title>
+<title>Visualizer – Track 3 (134 BPM, bass-heavy minimal, unique pack)</title>
 <style>
-  :root{ --ui-bg: rgba(255,255,255,.88); --ui-fg:#3e3e3e; --play-oval: rgba(140,195,120,.38);
-         --font: 400 12px/22px Clarkson, "Proxima Nova", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  :root{
+    --ui-bg: rgba(255,255,255,.88);
+    --ui-fg: #3e3e3e;
+    --play-oval: rgba(140, 195, 120, .38);
+    --font: 400 12px/22px Clarkson, "Proxima Nova", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
   html,body{margin:0;height:100%;background:#000;color:var(--ui-fg);font:var(--font)}
   #vizwrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}
-  #viz{position:absolute;inset:0;display:block;width:100%;height:100%;background:#000}
-  .ui{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.75rem;
-      padding:.6rem .8rem;background:var(--ui-bg);color:var(--ui-fg);font:var(--font);
-      border-top-left-radius:10px;border-top-right-radius:10px;opacity:0;transform:translateY(8px);
-      transition:opacity .25s ease, transform .25s ease;pointer-events:none;}
+  #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
+
+  /* Hover UI */
+  .ui{
+    position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.75rem;
+    padding:.6rem .8rem;background:var(--ui-bg);color:var(--ui-fg);font:var(--font);
+    border-top-left-radius:10px;border-top-right-radius:10px;opacity:0;transform:translateY(8px);
+    transition:opacity .25s ease, transform .25s ease;pointer-events:none;
+  }
   #vizwrap:hover .ui, #vizwrap.show-ui .ui{opacity:1;transform:none;pointer-events:auto}
-  .starter{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-           background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45))}
-  .play-oval{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
-             width:112px;height:72px;border-radius:9999px;background:var(--play-oval);
-             box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18)}
+
+  /* Center play oval */
+  .starter{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45));
+  }
+  .play-oval{
+    all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    width:112px;height:72px;border-radius:9999px;background:var(--play-oval);
+    box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18);
+  }
   .play-oval svg{width:24px;height:24px;fill:#fff}
-  .btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-       width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)}
+
+  /* Buttons / sliders */
+  .btn{
+    all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+    width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)
+  }
   .btn:hover{background:rgba(0,0,0,.12)}
   .pill{all:unset;cursor:pointer;background:rgba(0,0,0,.06);padding:.35rem .6rem;border-radius:999px}
   .pill:hover{background:rgba(0,0,0,.12)}
@@ -30,15 +48,11 @@
   .grow{flex:1}.spacer{width:8px}
   input[type="range"]{-webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none}
   input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
-  #status{position:absolute;left:8px;bottom:58px;padding:6px 8px;background:rgba(0,0,0,.55);color:#fff;
-          font:11px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; border-radius:6px; max-width:60ch; white-space:pre-line}
 </style>
 </head>
 <body>
   <div id="vizwrap" aria-label="Audio visualizer">
     <canvas id="viz"></canvas>
-
-    <div id="status">ready</div>
 
     <div class="ui" role="group" aria-label="Player controls">
       <button id="play" class="btn" aria-label="Play/Pause">▶</button>
@@ -51,72 +65,137 @@
       <button id="next" class="pill" aria-label="Next preset">Next</button>
     </div>
 
-    <!-- Inline onclick as an extra guard so clicks can’t be “eaten” -->
     <div id="starter" class="starter" role="dialog" aria-label="Click to start">
-      <button id="startBtn" class="play-oval" aria-label="Play" onclick="window._vizStart && window._vizStart()">
+      <button id="startBtn" class="play-oval" aria-label="Play">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
       </button>
     </div>
 
     <audio id="player" preload="auto" crossorigin="anonymous">
       <source src="track3.mp3" type="audio/mpeg">
-      <!-- If your file is really .mps, you can add: <source src="track3.mps" type="audio/mpeg"> -->
+      <!-- Optional fallback if your file is .mps:
+      <source src="track3.mps" type="audio/mpeg">
+      -->
     </audio>
   </div>
 
-  <!-- Core libs only (most reliable) -->
+  <!-- Butterchurn libs (merged packs for a bigger fresh pool) -->
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsNonMinimal.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra2.min.js"></script>
 
   <script>
-  // ===== tiny helpers/diagnostics =====
-  const $ = s => document.querySelector(s);
-  const status = (m) => { try { console.log('[viz3]', m); } catch(_){}; const el=$('#status'); if(el) el.textContent=String(m); };
+  /* ---------- helpers ---------- */
   const pad = s => (s<10?'0':'')+s;
   const fmt = t => (!isFinite(t)?'0:00': ((t/60)|0)+':'+pad((t%60)|0));
-  const webglOK = () => { const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); };
-
-  // ===== DOM =====
-  const wrap=$('#vizwrap'), canvas=$('#viz'), starter=$('#starter'), startBtn=$('#startBtn');
-  const audio=$('#player'), btnPlay=$('#play'), btnNext=$('#next'), rSeek=$('#seek'), rVol=$('#vol'), tTime=$('#time'), tDur=$('#dur');
-
-  // ===== state =====
-  let ctx, src, viz, PRESET_DICT, PRESET_NAMES;
-  let keys=[], index=0, timer=null, phase='A', switched=false, autoChangeCount=0;
-
-  // ===== presets: core only, by index =====
-  function initCorePresets(){
-    if (!window.butterchurnPresets){ throw new Error('core presets lib missing'); }
-    const lib=(butterchurnPresets.default||butterchurnPresets);
-    PRESET_DICT=lib.getPresets(); PRESET_NAMES=Object.keys(PRESET_DICT);
-    if (!PRESET_NAMES.length) throw new Error('no presets found in core');
-    // Start on 3rd, then step by 3s
-    const seq=[]; for(let i=2;i<PRESET_NAMES.length;i+=3) seq.push(PRESET_NAMES[i]);
-    if (seq.length<8) seq.push(...PRESET_NAMES);
-    return seq;
+  function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
+  function seededShuffle(arr, seedStr){
+    let seed=0; for(let i=0;i<seedStr.length;i++) seed=(seed*31 + seedStr.charCodeAt(i))>>>0;
+    function rnd(){ seed=(1664525*seed+1013904223)>>>0; return (seed & 0xfffffff)/0x10000000; }
+    const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a;
   }
 
-  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; if(viz) viz.setRendererSize(r.width,r.height); }
+  /* ---------- DOM ---------- */
+  const wrap=document.getElementById('vizwrap'), canvas=document.getElementById('viz');
+  const starter=document.getElementById('starter'), startBtn=document.getElementById('startBtn');
+  const audio=document.getElementById('player'), btnPlay=document.getElementById('play'), btnNext=document.getElementById('next');
+  const rSeek=document.getElementById('seek'), rVol=document.getElementById('vol'), tTime=document.getElementById('time'), tDur=document.getElementById('dur');
 
+  /* ---------- state ---------- */
+  let ctx, src, viz, PRESETS={dict:{},names:[]};
+  let keys=[], index=0, timer=null, phase='A', switched=false, autoChangeCount=0;
+  let bar80Timeout=null;
+
+  /* ---------- preset pool (merged → filtered → seeded) ---------- */
+  const BLOCKLIST = new Set([
+    'Geiss - Desert Rose' // known to white-out on some GPUs
+  ]);
+
+  function mergePresetPacks(){
+    const libs=[];
+    if (window.butterchurnPresets) libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
+    if (window.butterchurnPresetsNonMinimal) libs.push((butterchurnPresetsNonMinimal.default||butterchurnPresetsNonMinimal).getPresets());
+    if (window.butterchurnPresetsExtra) libs.push((butterchurnPresetsExtra.default||butterchurnPresetsExtra).getPresets());
+    if (window.butterchurnPresetsExtra2) libs.push((butterchurnPresetsExtra2.default||butterchurnPresetsExtra2).getPresets());
+    const dict=Object.assign({},...libs), names=Object.keys(dict);
+    return {dict,names};
+  }
+
+  function buildPack(){
+    const names = PRESETS.names;
+    // filter to bass/minimal/trippy aesthetics
+    const re = /(tunnel|spiral|kaleid|kaleidos|vortex|wormhole|fractal|nebula|minimal|grid|lines|rings|radial|lofi|mono)/i;
+    let pool = names.filter(n => re.test(n) && !BLOCKLIST.has(n));
+    if (pool.length < 12) pool = names.filter(n=>!BLOCKLIST.has(n)); // fallback to all (minus blocklist)
+    if (pool.length < 8)  pool = names; // last-resort: include everything
+    // Allow overriding/refreshing the pack with a URL seed (?seed=anything)
+    const url = new URL(window.location.href);
+    const seed = url.searchParams.get('seed') || 'track3-bass-minimal-unique';
+    const shuffled = seededShuffle(pool, seed);
+    return shuffled;
+  }
+
+  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; viz && viz.setRendererSize(r.width,r.height); }
+
+  /* ---------- per-phase style tweaks ---------- */
   function styleForPhase(preset){
-    const p=JSON.parse(JSON.stringify(preset));
-    p.ob_a=0; p.ib_a=0;
-    if (phase==='A'){ p.decay=Math.min(0.985, p.decay||0.98); p.gamma=p.gamma||1.2; }
-    else { p.decay=0.992; p.gamma=1.15; }
+    const p = JSON.parse(JSON.stringify(preset));
+    p.ob_a=0; p.ib_a=0; // tidy edges
+    if (phase==='A'){   // tighter, bass-forward
+      p.decay = Math.min(0.985, p.decay || 0.98);
+      p.gamma = p.gamma || 1.2;
+      p.per_frame = (p.per_frame||"") +
+        "q1=0.75*q1+0.25*bass_att; zoom=zoom*(1.0+0.012*q1); rot=rot+0.0008*(q1-0.5);";
+    } else {            // warmer, longer trails for vocals/pads
+      p.decay = 0.992;
+      p.gamma = 1.15;
+      p.shapecolorr=0.98; p.shapecolorg=0.15; p.shapecolorb=0.65; p.shapecolora=0.9;
+      p.per_frame = (p.per_frame||"") +
+        "q1=0.85*q1+0.15*bass_att; q2=0.85*q2+0.15*mid_att; qE=0.6*q1+0.4*q2; zoom=zoom*(1.0+0.007*qE); rot=rot+0.0012;";
+    }
     return p;
   }
 
-  function loadByIndex(i, blend=1.0){
-    if (!keys.length) keys=initCorePresets();
-    index=((i%keys.length)+keys.length)%keys.length;
-    const name=keys[index], base=PRESET_DICT[name];
-    viz.loadPreset(styleForPhase(base), blend);
-    wrap.classList.add('show-ui'); clearTimeout(wrap._h); wrap._h=setTimeout(()=>wrap.classList.remove('show-ui'), 800);
-    status('loaded preset: '+name);
+  /* ---------- safe loading with fallback ---------- */
+  function tryLoad(name, blend){
+    try{
+      const base=PRESETS.dict[name];
+      if (!base) throw new Error('missing preset '+name);
+      viz.loadPreset(styleForPhase(base), blend);
+      wrap.classList.add('show-ui'); clearTimeout(wrap._h); wrap._h=setTimeout(()=>wrap.classList.remove('show-ui'), 800);
+      return true;
+    }catch(e){
+      console.warn('preset load failed:', name, e);
+      return false;
+    }
   }
 
-  // ===== timing =====
+  function loadByIndex(i, blend=1.0){
+    if (!keys.length) keys=buildPack();
+    index=((i%keys.length)+keys.length)%keys.length;
+    let tries=0; let ok=false;
+    while(tries<Math.min(6, keys.length) && !(ok=tryLoad(keys[index], blend))){
+      index=(index+1)%keys.length; tries++;
+    }
+    if (!ok){
+      // rebuild pack once, then hard-fallback to core-only if still failing
+      PRESETS=mergePresetPacks(); keys=buildPack(); index=index%keys.length;
+      if (!tryLoad(keys[index], 0.0)){
+        console.warn('hard fallback to core-only');
+        // core-only emergency path
+        if (window.butterchurnPresets){
+          const lib=(butterchurnPresets.default||butterchurnPresets), dict=lib.getPresets(), names=Object.keys(dict);
+          PRESETS={dict,names}; keys=names.filter(n=>!BLOCKLIST.has(n)); index=index%keys.length;
+          tryLoad(keys[index], 0.0);
+        }
+      }
+    }
+  }
+
+  /* ---------- timing & cadence ---------- */
   const BPM=134, MS_PER_BAR=(60000/BPM)*4, BAR80_TIME=MS_PER_BAR*80;
   function cadenceBars(){ return (autoChangeCount<2)?16:32; }
   function reschedule(){
@@ -125,38 +204,36 @@
     timer=setInterval(()=>{
       loadByIndex(index+1, 1.0);
       autoChangeCount++;
-      if (autoChangeCount===2) reschedule();
+      if (autoChangeCount===2) reschedule(); // switch cadence 16→32
     }, interval);
-    status('auto every '+interval+'ms');
   }
   function scheduleBar80(){
-    const msLeft = Math.max(0, BAR80_TIME - (audio.currentTime*1000||0));
-    setTimeout(()=>{
+    if (bar80Timeout) { clearTimeout(bar80Timeout); bar80Timeout=null; }
+    const msLeft=Math.max(0, BAR80_TIME - (audio.currentTime*1000||0));
+    bar80Timeout=setTimeout(()=>{
       if (!switched){
         phase='B'; switched=true;
         if (timer){ clearInterval(timer); timer=null; }
-        status('BAR80 → next preset');
-        loadByIndex(index+1, 0.9);
+        loadByIndex(index+1, 1.0);  // FORCE next preset at vocals
         reschedule();
       }
     }, msLeft);
   }
 
-  // ===== audio routing =====
+  /* ---------- audio routing ---------- */
   function buildVizInput(c, mediaSource){
     mediaSource.connect(c.destination);               // speakers
-    const g=c.createGain(); g.gain.value=+rVol.value; // visuals
+    const g=c.createGain(); g.gain.value=+rVol.value; // visuals input (sensitivity tied to volume)
     mediaSource.connect(g);
     return g;
   }
 
-  // ===== boot =====
+  /* ---------- boot ---------- */
   async function boot(){
-    status('boot…');
-    if (!webglOK()) throw new Error('WebGL unavailable (enable Hardware Acceleration)');
+    if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return; }
     const BC=(window.butterchurn && (butterchurn.createVisualizer?butterchurn:butterchurn.default))||null;
-    if (!BC) throw new Error('butterchurn core not loaded');
-    keys = initCorePresets();
+    const merged=mergePresetPacks(); if (!BC || !merged.names.length){ alert('Preset libraries failed to load.'); return; }
+    PRESETS=merged;
 
     if (!ctx){
       ctx=new (window.AudioContext||window.webkitAudioContext)();
@@ -164,58 +241,63 @@
       viz=BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
       viz.connectAudio(buildVizInput(ctx, src));
 
-      index=0; autoChangeCount=0; phase='A'; switched=false;
+      keys=buildPack();
+      index = Math.min(2, Math.max(0, keys.length-1)); // start on the 3rd preset
+      autoChangeCount=0; phase='A'; switched=false;
+
       loadByIndex(index, 0.0);
 
       (function loop(){ viz.render(); requestAnimationFrame(loop); })();
       size(); window.addEventListener('resize', size);
 
-      reschedule(); scheduleBar80();
+      reschedule();
+      scheduleBar80();
 
-      // time UI + restart
+      // time UI + restart if scrubbed to the start
       let lastT=0;
       audio.addEventListener('timeupdate', ()=>{
         const t=audio.currentTime||0;
-        if (audio.duration){ rSeek.value=t/audio.duration; tTime.textContent=fmt(t); tDur.textContent=fmt(audio.duration); }
-        if (t<1 && lastT>5){ index=0; autoChangeCount=0; phase='A'; switched=false; loadByIndex(0,0); reschedule(); scheduleBar80(); }
+        if (audio.duration){
+          rSeek.value=t/audio.duration; tTime.textContent=fmt(t); tDur.textContent=fmt(audio.duration);
+        }
+        if (t<1 && lastT>5){
+          keys=buildPack(); index=Math.min(2, keys.length-1);
+          autoChangeCount=0; phase='A'; switched=false;
+          loadByIndex(index, 0.0); reschedule(); scheduleBar80();
+        }
         lastT=t;
       });
-      audio.addEventListener('loadedmetadata',()=> status('audio loaded: '+(audio.currentSrc||'')+' • '+fmt(audio.duration)));
-      audio.addEventListener('error',()=> status('AUDIO ERROR: '+(audio.currentSrc||'(no src)')));
+      audio.addEventListener('seeked', scheduleBar80);
+      audio.addEventListener('play', scheduleBar80);
+      audio.addEventListener('loadedmetadata', scheduleBar80);
     }
-    if (ctx.state==='suspended'){ await ctx.resume(); }
-    status('boot ok — click play');
+    if (ctx.state==='suspended') await ctx.resume();
   }
 
-  // ===== global starter (can’t be swallowed) =====
-  window._vizStart = async function(){
+  /* ---------- start + controls ---------- */
+  async function startPlayback(){
     try{
       if (!ctx) await boot();
       if (ctx.state==='suspended') await ctx.resume();
       await audio.play();
       starter.style.display='none';
       btnPlay.textContent='⏸';
-      status('playing…');
     }catch(e){
       console.error('play failed', e, 'src=', audio.currentSrc);
-      status('PLAY ERROR: '+(e && e.message? e.message : e));
-      alert('Could not start audio. Check the file URL/name and try again.');
+      alert('Could not start audio. Check the file URL/name.');
     }
-  };
-
-  // Fire boot on the first interaction ANYWHERE (extra safety)
-  document.addEventListener('pointerdown', ()=>{ if(!ctx){ window._vizStart(); } }, {once:true, passive:true});
-  // Keep the usual controls too
-  startBtn.addEventListener('click', ()=> window._vizStart());
-  canvas.addEventListener('click', ()=> window._vizStart());
-  document.addEventListener('keydown', e=>{ if(e.code==='Space'||e.key==='Enter') window._vizStart(); });
+  }
+  startBtn.addEventListener('click', startPlayback);
+  starter.addEventListener('click', e=>{ if(e.target===starter) startPlayback(); });
+  canvas.addEventListener('click', startPlayback);
+  document.addEventListener('keydown', e=>{ if(e.code==='Space'||e.key==='Enter') startPlayback(); });
 
   btnPlay.addEventListener('click', async ()=>{
     try{
       if (!ctx) await boot();
-      if (audio.paused){ await audio.play(); btnPlay.textContent='⏸'; status('playing…'); }
-      else { audio.pause(); btnPlay.textContent='▶'; status('paused'); }
-    }catch(e){ console.error(e); status('PLAY/PAUSE ERROR: '+(e.message||e)); }
+      if (audio.paused){ await audio.play(); btnPlay.textContent='⏸'; }
+      else { audio.pause(); btnPlay.textContent='▶'; }
+    }catch(e){ console.error(e); alert('Could not start audio.'); }
   });
   btnNext.addEventListener('click', ()=> loadByIndex(index+1, 0.9));
   rSeek.addEventListener('input', e=>{ if(audio.duration) audio.currentTime = e.target.value * audio.duration; });
