@@ -152,4 +152,87 @@
 
   // -------- audio routing (super simple) --------
   function buildVizInput(c, mediaSource){
-    med
+    mediaSource.connect(c.destination);                    // speakers
+    const g=c.createGain(); g.gain.value=+rVol.value;      // visuals
+    mediaSource.connect(g);
+    return g;
+  }
+
+  // -------- boot --------
+  async function boot(){
+    try{
+      status('boot…');
+      if (!webglOK()) throw new Error('WebGL unavailable (enable Hardware Acceleration)');
+      const BC = (window.butterchurn && (butterchurn.createVisualizer?butterchurn:butterchurn.default)) || null;
+      if (!BC) throw new Error('butterchurn core not loaded');
+
+      // init presets first (so we can fail fast if CDN blocked)
+      keys = initCorePresets();
+
+      if (!ctx){
+        ctx = new (window.AudioContext||window.webkitAudioContext)();
+        src = ctx.createMediaElementSource(audio);
+
+        viz = BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
+        viz.connectAudio(buildVizInput(ctx, src));
+
+        index = 0; autoChangeCount=0; phase='A'; switched=false;
+        loadByIndex(index, 0.0);
+
+        (function loop(){ viz.render(); requestAnimationFrame(loop); })();
+        size(); window.addEventListener('resize', size);
+
+        reschedule();
+        scheduleBar80();
+
+        // UI wiring
+        let lastT=0;
+        audio.addEventListener('timeupdate', ()=>{
+          const t=audio.currentTime||0;
+          if (audio.duration){ rSeek.value=t/audio.duration; tTime.textContent=fmt(t); tDur.textContent=fmt(audio.duration); }
+          if (t<1 && lastT>5){ index=0; autoChangeCount=0; phase='A'; switched=false; loadByIndex(0,0); reschedule(); scheduleBar80(); }
+          lastT=t;
+        });
+        audio.addEventListener('error',()=>{ status('AUDIO ERROR: '+(audio.currentSrc||'no src')); console.error('audio error', audio.networkState, audio.currentSrc); });
+        audio.addEventListener('loadedmetadata',()=> status('audio loaded: '+(audio.currentSrc||'')+' • '+fmt(audio.duration)));
+      }
+      if (ctx.state==='suspended'){ await ctx.resume(); }
+      status('boot ok — click play');
+    }catch(e){
+      console.error(e); status('BOOT ERROR: '+e.message);
+      throw e;
+    }
+  }
+
+  // -------- start & controls --------
+  async function startPlayback(){
+    try{
+      await boot();
+      await audio.play();
+      starter.style.display='none';
+      btnPlay.textContent='⏸';
+      status('playing…');
+    }catch(e){
+      console.error('play failed', e, 'src=', audio.currentSrc);
+      status('PLAY ERROR: '+(e && e.message? e.message : e));
+      alert('Could not start audio. Check file name/URL and try again.');
+    }
+  }
+  startBtn.addEventListener('click', startPlayback);
+  starter.addEventListener('click', e=>{ if(e.target===starter) startPlayback(); });
+  canvas.addEventListener('click', startPlayback);
+  document.addEventListener('keydown', e=>{ if(e.code==='Space'||e.key==='Enter') startPlayback(); });
+
+  btnPlay.addEventListener('click', async ()=>{
+    try{
+      if (!ctx) await boot();
+      if (audio.paused){ await audio.play(); btnPlay.textContent='⏸'; status('playing…'); }
+      else { audio.pause(); btnPlay.textContent='▶'; status('paused'); }
+    }catch(e){ console.error(e); status('PLAY/PAUSE ERROR: '+e.message); }
+  });
+  btnNext.addEventListener('click', ()=> loadByIndex(index+1, 0.9));
+  rSeek.addEventListener('input', e=>{ if(audio.duration) audio.currentTime = e.target.value * audio.duration; });
+  rVol.addEventListener('input', e=>{ audio.volume = +e.target.value; });
+  </script>
+</body>
+</html>
