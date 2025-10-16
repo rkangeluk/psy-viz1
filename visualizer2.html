@@ -8,68 +8,46 @@
   :root{
     --ui-bg: rgba(255,255,255,.88);
     --ui-fg: #3e3e3e;
-    --play-oval: rgba(140, 195, 120, .38); /* soft green tint */
+    --play-oval: rgba(140, 195, 120, .38);
     --font: 400 12px/22px Clarkson, "Proxima Nova", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   }
-
   html,body{margin:0;height:100%;background:#fff;color:var(--ui-fg);font:var(--font)}
-  /* Wrapper fills the iframe/viewport */
   #vizwrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}
   #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
-
-  /* Hover UI (bottom) */
+  /* Hover-only controls (no JS-triggered flashes) */
   .ui{
-    position:absolute;left:0;right:0;bottom:0;
-    display:flex;align-items:center;gap:.75rem;
-    padding:.6rem .8rem;
-    background:var(--ui-bg);
-    color:var(--ui-fg);
-    font:var(--font);
-    border-top-left-radius:10px;border-top-right-radius:10px;
-    opacity:0;transform:translateY(8px);
-    transition:opacity .25s ease, transform .25s ease;
-    pointer-events:none;
+    position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.75rem;
+    padding:.6rem .8rem;background:var(--ui-bg);color:var(--ui-fg);font:var(--font);
+    border-top-left-radius:10px;border-top-right-radius:10px;opacity:0;transform:translateY(8px);
+    transition:opacity .25s ease, transform .25s ease;pointer-events:none;
   }
-  #vizwrap:hover .ui, #vizwrap.show-ui .ui{opacity:1;transform:none;pointer-events:auto}
-
-  /* Center play oval (no text) */
-  .starter{
-    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45));
-  }
-  .play-oval{
-    all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  #vizwrap:hover .ui{opacity:1;transform:none;pointer-events:auto}
+  .starter{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45))}
+  .play-oval{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
     width:112px;height:72px;border-radius:9999px;background:var(--play-oval);
-    box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18);
-  }
+    box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18)}
   .play-oval svg{width:24px;height:24px;fill:#fff}
-
-  /* Buttons / sliders */
-  .btn{
-    all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-    width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)
-  }
+  .btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+    width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)}
   .btn:hover{background:rgba(0,0,0,.12)}
   .pill{all:unset;cursor:pointer;background:rgba(0,0,0,.06);padding:.35rem .6rem;border-radius:999px}
   .pill:hover{background:rgba(0,0,0,.12)}
   .label{opacity:.85;min-width:52px;text-align:right}
-  .grow{flex:1}
-  .spacer{width:8px}
-  input[type="range"]{
-    -webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);
-    border-radius:999px;outline:none
-  }
-  input[type="range"]::-webkit-slider-thumb{
-    -webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;
-    background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)
-  }
+  .grow{flex:1}.spacer{width:8px}
+  input[type="range"]{-webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);
+    border-radius:999px;outline:none}
+  input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;
+    background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
+  /* hidden probe to detect white-out frames */
+  #probe{position:absolute;left:-9999px;top:-9999px;width:64px;height:64px}
 </style>
 </head>
 <body>
   <div id="vizwrap" aria-label="Audio visualizer">
     <canvas id="viz"></canvas>
+    <canvas id="probe" width="64" height="64" aria-hidden="true"></canvas>
 
-    <!-- Hover-only UI -->
     <div class="ui" role="group" aria-label="Player controls">
       <button id="play" class="btn" aria-label="Play/Pause">▶</button>
       <span id="time" class="label">0:00</span>
@@ -81,28 +59,48 @@
       <button id="next" class="pill" aria-label="Next preset">Next</button>
     </div>
 
-    <!-- Center play oval (no text) -->
     <div id="starter" class="starter" role="dialog" aria-label="Click to start">
-      <button id="startBtn" class="play-oval" aria-label="Play">
-        <!-- simple play triangle -->
+      <!-- Inline onclick: most reliable first-gesture path -->
+      <button id="startBtn" class="play-oval" aria-label="Play"
+              onclick="window._vizStart && window._vizStart()">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
       </button>
     </div>
 
-    <!-- Hidden audio (no native controls) -->
-    <audio id="player" preload="auto" crossorigin="anonymous">
+    <!-- playsinline helps Safari/iOS -->
+    <audio id="player" preload="auto" playsinline crossorigin="anonymous">
       <source src="track2.mp3" type="audio/mpeg">
       <!-- <source src="track2.wav" type="audio/wav"> -->
     </audio>
   </div>
 
-  <!-- Butterchurn libs -->
-  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
-  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
-  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+  <!-- Libraries with jsDelivr fallback -->
+  <script>
+  function loadScriptPair(primary, fallback){
+    return new Promise((resolve,reject)=>{
+      const s=document.createElement('script'); s.src=primary; s.async=false;
+      s.onload=resolve;
+      s.onerror=()=>{ const f=document.createElement('script'); f.src=fallback; f.async=false;
+        f.onload=resolve; f.onerror=()=>reject(new Error('CDN fail '+primary)); document.head.appendChild(f); };
+      document.head.appendChild(s);
+    });
+  }
+  (async function libs(){
+    const u='https://unpkg.com/', j='https://cdn.jsdelivr.net/npm/';
+    await loadScriptPair(u+'butterchurn@2.6.7/lib/butterchurn.min.js',              j+'butterchurn@2.6.7/lib/butterchurn.min.js');
+    await loadScriptPair(u+'butterchurn@2.6.7/lib/butterchurnExtraImages.min.js',   j+'butterchurn@2.6.7/lib/butterchurnExtraImages.min.js');
+    await loadScriptPair(u+'butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js', j+'butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js');
+    window._libsReady = true;
+  })();
+  </script>
 
   <script>
-  // —— CDN export helpers ——
+  // —— params (optional bans via ?ban=Name1,Name2) ——
+  const url = new URL(location.href);
+  const BAN_PARAM = url.searchParams.get('ban') || '';
+  const USER_BLOCK = new Set(BAN_PARAM.split(',').map(s=>s.trim()).filter(Boolean));
+
+  // —— helpers ——
   function getBC(){
     const bc = window.butterchurn;
     if(!bc) return null;
@@ -115,18 +113,16 @@
     return (typeof lib.getPresets === 'function') ? lib :
            (lib.default && typeof lib.default.getPresets === 'function') ? lib.default : null;
   }
-  function webglOK(){
-    const c=document.createElement('canvas');
-    return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl'));
-  }
+  function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
   const pad = s => (s<10?'0':'')+s;
   const fmt = t => { if(!isFinite(t)) return '0:00'; const m=(t/60)|0, s=(t%60)|0; return m+':'+pad(s); };
+  const log = (...a)=>console.log('[viz2]', ...a);
 
   // —— DOM refs ——
   const wrap   = document.getElementById('vizwrap');
   const canvas = document.getElementById('viz');
+  const probe  = document.getElementById('probe');
   const starter= document.getElementById('starter');
-  const startBtn= document.getElementById('startBtn');
   const audio  = document.getElementById('player');
   const btnPlay= document.getElementById('play');
   const btnNext= document.getElementById('next');
@@ -139,11 +135,12 @@
   let ctx, src, viz, PRESETS, BC;
   let keys = [], index = 0, timer = null;
   let phase = 'A'; // A=32 bars, B=16 bars
+  let whiteWatch = null;
+  const SESSION_BLOCK = new Set();
 
-  // Make sure we actually have multiple presets to cycle
+  // Build curated first; fallback to all
   function chooseKeys(){
     const all = PRESETS.getPresets();
-    // If any of these names are missing, we fall back to ALL presets.
     const curated = [
       "fiShbRaiN - spinCycle",
       "Yin - Chrystalline",
@@ -151,8 +148,11 @@
       "Cope - Kaleidosprint",
       "Geiss - Reaction Diffusion 2",
       "Eo.S. - Dragon Dance"
-    ].filter(n => all[n]);
-    keys = (curated.length >= 3) ? curated : Object.keys(all); // guarantee >1
+    ].filter(n => all[n] && !USER_BLOCK.has(n));
+    // Fall back to everything, minus session/user blocks & known offenders
+    const base = curated.length >= 3 ? curated
+      : Object.keys(all).filter(n => !USER_BLOCK.has(n) && !SESSION_BLOCK.has(n) && !/Desert\s*Rose/i.test(n));
+    keys = base;
   }
 
   function size(){
@@ -161,16 +161,18 @@
     if (viz) viz.setRendererSize(r.width, r.height);
   }
 
+  // **FIX 1: no UI flash on transitions** (no .show-ui toggling)
   function loadByIndex(i, blend=1.4){
     const all = PRESETS.getPresets();
+    if (!keys.length) chooseKeys();
     index = (i + keys.length) % keys.length;
-    viz.loadPreset(all[keys[index]], blend);
-    // brief UI reveal as feedback
-    wrap.classList.add('show-ui'); clearTimeout(wrap._h);
-    wrap._h = setTimeout(()=>wrap.classList.remove('show-ui'), 1000);
+    const name = keys[index];
+    viz.loadPreset(all[name], blend);
+    log('Loaded:', name);
+    armWhiteWatch(name);
   }
 
-  // 133 BPM phase timing: A=32 bars, B=16 bars (switch at last third)
+  // 133 BPM phase timing: A=32 bars → B=16 bars (last third)
   const BPM = 133;
   const MS_PER_BAR = (60000 / BPM) * 4;
 
@@ -181,28 +183,61 @@
     timer = setInterval(()=> loadByIndex(index+1, 1.6), interval);
   }
 
-  // Tie audio volume to viz sensitivity
+  // Audio → speakers + viz branch (volume = sensitivity)
   function buildVizInput(c, mediaSource){
-    mediaSource.connect(c.destination); // speakers
+    mediaSource.connect(c.destination);
     const gain = c.createGain();
     gain.gain.value = +rVol.value;
     mediaSource.connect(gain);
     return gain;
   }
 
+  // **White-out watchdog**: skip presets that render near-white for ~6s
+  function armWhiteWatch(presetName){
+    if (whiteWatch) { clearInterval(whiteWatch); whiteWatch=null; }
+    const pctx = probe.getContext('2d', {willReadFrequently:true}); if (!pctx) return;
+    let brightCount=0;
+    whiteWatch=setInterval(()=>{
+      try{
+        pctx.drawImage(canvas, 0,0, probe.width, probe.height);
+        const {data} = pctx.getImageData(0,0, probe.width, probe.height);
+        let sum=0, n=0;
+        for (let i=0;i<data.length;i+=4){
+          const r=data[i]/255, g=data[i+1]/255, b=data[i+2]/255;
+          sum += 0.2126*r + 0.7152*g + 0.0722*b; n++;
+        }
+        const avg = sum/n;
+        if (avg > 0.97) brightCount++; else brightCount=0;
+        if (brightCount >= 3){ // ~6s of near-white → skip & block
+          SESSION_BLOCK.add(presetName);
+          log('White-out detected, skipping:', presetName);
+          // Replace this slot with a nearby non-blocked preset
+          chooseKeys();
+          loadByIndex(index+1, 1.2);
+          brightCount=0;
+        }
+      }catch(e){
+        clearInterval(whiteWatch); whiteWatch=null; // cross-origin taint: disable silently
+      }
+    }, 2000);
+  }
+
   async function boot(){
     if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return; }
+    // wait for libs (up to ~8s)
+    await new Promise(res=>{
+      let t=0; const h=setInterval(()=>{ if (window._libsReady){ clearInterval(h); res(); } if (++t>80){ clearInterval(h); res(); } }, 100);
+    });
     BC = getBC(); PRESETS = getPresetsLib();
     if (!BC || !PRESETS) { alert('Libraries failed to load.'); return; }
 
     if (!ctx){
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      ctx = new (window.AudioContext || window.webkitAudioContext)({latencyHint:'interactive'});
       src = ctx.createMediaElementSource(audio);
 
       const input = buildVizInput(ctx, src);
-      viz = BC.createVisualizer(ctx, canvas, {
-        width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1
-      });
+      viz = (window.butterchurn.createVisualizer ? window.butterchurn : window.butterchurn.default)
+              .createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
       viz.connectAudio(input);
 
       chooseKeys();
@@ -211,10 +246,10 @@
       function loop(){ viz.render(); requestAnimationFrame(loop); }
       requestAnimationFrame(loop);
 
-      size(); window.addEventListener('resize', size);
+      size(); window.addEventListener('resize', size, {passive:true});
       reschedule();
 
-      // Switch to Phase B (16 bars) in the last third of the track
+      // Phase switch (last third)
       audio.addEventListener('timeupdate', ()=>{
         if (phase==='A' && audio.duration && audio.currentTime/audio.duration > 2/3){
           phase = 'B';
@@ -222,57 +257,58 @@
         }
       });
 
-      // Ensure restart resets phase + sequence
+      // Restart behavior
       let lastT=0;
       audio.addEventListener('timeupdate', ()=>{
         const t = audio.currentTime||0;
-        if (t<1 && lastT>5){ // scrubbing back near 0
-          phase='A'; index=0; chooseKeys(); loadByIndex(0,0); reschedule();
-        }
+        if (t<1 && lastT>5){ phase='A'; index=0; chooseKeys(); loadByIndex(0,0); reschedule(); }
         lastT = t;
-      });
+      }, {passive:true});
     }
     if (ctx.state === 'suspended') await ctx.resume();
   }
 
-  // —— Controls ——
-  startBtn.addEventListener('click', async ()=>{
-    await boot();
-    await audio.play();
-    starter.style.display='none';
-    btnPlay.textContent='⏸';
+  // —— Controls / robust start ——
+  async function startPlayback(){
+    try{
+      if (!ctx){ const ok = await boot(); if (ok===false) return; }
+      if (ctx.state === 'suspended') await ctx.resume();
+      await audio.play();
+      starter.style.display='none';
+      btnPlay.textContent='⏸';
+    }catch(e){ console.warn('Start/play warning:', e); }
+  }
+
+  // Global starter for inline onclick + broad bindings
+  window._vizStart = async function(){ return startPlayback(); };
+  ['pointerdown','touchstart','mousedown'].forEach(ev=>{
+    document.addEventListener(ev, ()=>{ if(!ctx || audio.paused) window._vizStart(); }, {once:true, passive:true});
+    canvas.addEventListener(ev, ()=>{ if(!ctx || audio.paused) window._vizStart(); }, {passive:true});
   });
+
+  document.getElementById('startBtn').addEventListener('click', startPlayback);
+  document.getElementById('starter').addEventListener('click', (e)=>{ if (e.target.id==='starter') startPlayback(); });
+  canvas.addEventListener('click', startPlayback);
+  document.addEventListener('keydown', (e)=>{ if (e.code==='Space'||e.key==='Enter') startPlayback(); });
 
   btnPlay.addEventListener('click', async ()=>{
-    if (!ctx){ await boot(); }
-    if (audio.paused){ await audio.play(); btnPlay.textContent='⏸'; }
-    else { audio.pause(); btnPlay.textContent='▶'; }
+    try{
+      if (!ctx) await startPlayback();
+      if (audio.paused){ await audio.play(); btnPlay.textContent='⏸'; }
+      else { audio.pause(); btnPlay.textContent='▶'; }
+    }catch(e){ console.warn(e); }
   });
-
   btnNext.addEventListener('click', ()=> loadByIndex(index+1, 1.2));
-
   audio.addEventListener('timeupdate', ()=>{
     if (audio.duration){
       const p = audio.currentTime / audio.duration;
-      document.getElementById('seek').value = p;
-      document.getElementById('time').textContent = fmt(audio.currentTime);
-      document.getElementById('dur').textContent  = fmt(audio.duration);
+      rSeek.value = p;
+      tTime.textContent = fmt(audio.currentTime);
+      tDur.textContent  = fmt(audio.duration);
     }
-  });
-  document.getElementById('seek').addEventListener('input', e=>{
-    if (audio.duration) audio.currentTime = e.target.value * audio.duration;
-  });
-  document.getElementById('vol').addEventListener('input', e=>{
-    audio.volume = +e.target.value;
-  });
-
-  // Accessibility: flash UI briefly on key/touch
-  ['keydown','pointerdown'].forEach(evt=>{
-    document.addEventListener(evt, ()=>{
-      wrap.classList.add('show-ui'); clearTimeout(wrap._h);
-      wrap._h = setTimeout(()=>wrap.classList.remove('show-ui'), 1200);
-    }, {passive:true});
-  });
+  }, {passive:true});
+  rSeek.addEventListener('input', e=>{ if (audio.duration) audio.currentTime = e.target.value * audio.duration; });
+  rVol.addEventListener('input', e=>{ audio.volume = +e.target.value; });
   </script>
 </body>
 </html>
