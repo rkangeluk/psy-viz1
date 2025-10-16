@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualizer – Track 4 (ambient evolving, grid-snapped)</title>
+<title>Visualizer – Track 4 (ambient evolving, 16-bar grid)</title>
 <style>
   :root{ --ui-bg: rgba(255,255,255,.88); --ui-fg:#3e3e3e; --play-oval: rgba(140,195,120,.38);
          --font: 400 12px/22px Clarkson,"Proxima Nova","Open Sans","Helvetica Neue",Helvetica,Arial,sans-serif; }
@@ -14,7 +14,7 @@
       padding:.6rem .8rem;background:var(--ui-bg);color:var(--ui-fg);font:var(--font);
       border-top-left-radius:10px;border-top-right-radius:10px;opacity:0;transform:translateY(8px);
       transition:opacity .25s ease, transform .25s ease;pointer-events:none;}
-  #vizwrap:hover .ui, #vizwrap.show-ui .ui{opacity:1;transform:none;pointer-events:auto}
+  #vizwrap:hover .ui{opacity:1;transform:none;pointer-events:auto}
   .starter{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
            background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45))}
   .play-oval{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
@@ -30,9 +30,6 @@
   .grow{flex:1}.spacer{width:8px}
   input[type="range"]{-webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none}
   input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
-  /* optional preset name badge (hidden by default) */
-  #badge{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.45);color:#fff;padding:6px 8px;border-radius:8px;
-         font:11px/1.2 ui-monospace,Menlo,Consolas,monospace;display:none;max-width:60ch;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #probe{position:absolute;left:-9999px;top:-9999px;width:64px;height:64px}
 </style>
 </head>
@@ -40,7 +37,6 @@
   <div id="vizwrap" aria-label="Audio visualizer">
     <canvas id="viz"></canvas>
     <canvas id="probe" width="64" height="64" aria-hidden="true"></canvas>
-    <div id="badge" aria-hidden="true"></div>
 
     <div class="ui" role="group" aria-label="Player controls">
       <button id="play" class="btn" aria-label="Play/Pause">▶</button>
@@ -84,22 +80,20 @@
   </script>
 
   <script>
-  /* params */
+  /* params (16-bar macro default) */
   const url = new URL(location.href);
   const P = (k,d)=>url.searchParams.get(k)||d;
   const AUDIO_FILE = P('audio','track4.mp3');
   const BPM        = parseFloat(P('bpm','124'));
   const BARS       = parseInt(P('bars','194'),10);
   const MICRO      = parseInt(P('micro','4'),10);     // micro morphs: 4 bars
-  const MACRO      = parseInt(P('macro','32'),10);    // macro changes: 16 or 32 bars (grid-snapped)
+  const MACRO      = parseInt(P('macro','16'),10);    // macro changes: 16 bars
   const BLOOM_BAR  = parseInt(P('bloom','160'),10);
   const SEED       = P('seed','track4-ambient-evolving');
-  const BAN_PARAM  = P('ban','');                     // permanent bans
-  const SHOWNAME   = P('showname','0')==='1';         // ?showname=1 to show current preset name
+  const BAN_PARAM  = P('ban','');
 
   /* DOM */
   const wrap=document.getElementById('vizwrap'), canvas=document.getElementById('viz'), probe=document.getElementById('probe');
-  const badge=document.getElementById('badge');
   const starter=document.getElementById('starter'), startBtn=document.getElementById('startBtn');
   const audio=document.getElementById('player'), btnPlay=document.getElementById('play'), btnNext=document.getElementById('next');
   const rSeek=document.getElementById('seek'), rVol=document.getElementById('vol'), tTime=document.getElementById('time'), tDur=document.getElementById('dur');
@@ -122,8 +116,17 @@
   let nanoTO=null, microTO=null, macroTO=null; // grid-snapped timeouts
   let whiteWatch=null;
   const SESSION_BLOCK = new Set();
-  const BASE_BLOCK=new Set(['Geiss - Desert Rose']);
-  const USER_BLOCK=new Set(BAN_PARAM?BAN_PARAM.split(',').map(s=>s.trim()).filter(Boolean):[]);
+
+  /* permanent blocks (your list) */
+  const BLOCK_PATTERNS = [
+    /flexi/i,                           // any Flexi
+    /spiral\s*artifact/i,               // Spiral Artifact
+    /geiss.*spiral|spiral.*geiss/i,     // Geiss + Spiral mashups
+    /rovastar/i,                        // any Rovastar
+    /loadus/i,                          // any Loadus
+    /Geiss - Desert Rose/i              // known glitchy
+  ];
+  const USER_BLOCK = new Set(BAN_PARAM?BAN_PARAM.split(',').map(s=>s.trim()).filter(Boolean):[]);
 
   /* packs */
   function mergePresetPacks(){
@@ -135,11 +138,16 @@
     const dict=Object.assign({},...libs), names=Object.keys(dict);
     return {dict,names};
   }
+  function isBlockedName(name){
+    if (USER_BLOCK.has(name)) return true;
+    for (const re of BLOCK_PATTERNS){ if (re.test(name)) return true; }
+    return false;
+  }
   function buildPack(){
     const names=PRESETS.names;
     const re=/(cloud|nebula|aura|aurora|mist|plasma|fluid|flow|wave|sea|water|kaleid|spiral|vortex|wormhole|fractal|bloom|pulse|ribbon|lace|glow|minimal|lofi|mono|soft|blur|psy|tunnel|chroma)/i;
-    let pool=names.filter(n=>re.test(n) && !BASE_BLOCK.has(n) && !USER_BLOCK.has(n) && !SESSION_BLOCK.has(n));
-    if (pool.length<16) pool=names.filter(n=>!BASE_BLOCK.has(n) && !USER_BLOCK.has(n) && !SESSION_BLOCK.has(n));
+    let pool=names.filter(n=>re.test(n) && !isBlockedName(n) && !SESSION_BLOCK.has(n));
+    if (pool.length<16) pool=names.filter(n=>!isBlockedName(n) && !SESSION_BLOCK.has(n));
     if (pool.length<8)  pool=names.filter(n=>!SESSION_BLOCK.has(n));
     return seededShuffle(pool, SEED);
   }
@@ -165,15 +173,12 @@
     return p;
   }
 
-  /* load + badge + watchdog */
-  function setBadge(name){ if(!SHOWNAME) return; badge.style.display='block'; badge.textContent=name; }
+  /* load + watchdog (no UI peeks) */
   function tryLoadName(name, blend){
     try{
       const base=PRESETS.dict[name]; if(!base) throw new Error('missing '+name);
       const tMs=(audio.currentTime||0)*1000;
       viz.loadPreset(mutatePreset(base, tMs, phase==='B'?1.2:1.0), blend);
-      setBadge(name);
-      wrap.classList.add('show-ui'); clearTimeout(wrap._h); wrap._h=setTimeout(()=>wrap.classList.remove('show-ui'), 800);
       armWhiteWatch(name);
       return true;
     }catch(e){ console.warn('preset fail', name, e); return false; }
@@ -190,12 +195,13 @@
       if (!tryLoadName(keys[index], 0.0) && window.butterchurnPresets){
         const core=(butterchurnPresets.default||butterchurnPresets).getPresets();
         PRESETS={dict:core, names:Object.keys(core)};
-        keys=PRESETS.names.filter(n=>!BASE_BLOCK.has(n) && !USER_BLOCK.has(n) && !SESSION_BLOCK.has(n)); index=index%keys.length;
+        keys=PRESETS.names.filter(n=>!isBlockedName(n) && !SESSION_BLOCK.has(n)); index=index%keys.length;
         tryLoadName(keys[index], 0.0);
       }
     }
   }
 
+  /* white-out watchdog */
   function armWhiteWatch(presetName){
     if (whiteWatch) { clearInterval(whiteWatch); whiteWatch=null; }
     const pctx = probe.getContext('2d', {willReadFrequently:true}); if(!pctx) return;
@@ -212,33 +218,22 @@
     }, 2000);
   }
 
-  /* grid-snapped scheduling (no drift) */
+  /* grid-snapped (nano=2, micro=4, macro=16) */
   function clearGridTimers(){ if(nanoTO){clearTimeout(nanoTO);} if(microTO){clearTimeout(microTO);} if(macroTO){clearTimeout(macroTO);} nanoTO=microTO=macroTO=null; }
   function barsElapsed(){ return (audio.currentTime*1000)/MS_PER_BAR; }
-  function msUntilNextBoundary(spanBars){ // time until next multiple of spanBars
-    const b = barsElapsed(); const next = Math.ceil(b / spanBars) * spanBars; return Math.max(0, Math.round((next - b) * MS_PER_BAR));
-  }
+  function msUntilNextBoundary(spanBars){ const b = barsElapsed(); const next = Math.ceil(b / spanBars) * spanBars; return Math.max(0, Math.round((next - b) * MS_PER_BAR)); }
   function scheduleOnGrid(){
     clearGridTimers();
-    // nano (2 bars) — subtle morph
     const nanoSpan=2;
-    const nanoDelay = msUntilNextBoundary(nanoSpan);
-    nanoTO = setTimeout(function tick(){ loadByIndex(index, 0.6); nanoTO=setTimeout(tick, msForBars(nanoSpan)); }, nanoDelay);
-
-    // micro (MICRO bars) — noticeable morph
-    const microDelay = msUntilNextBoundary(MICRO);
-    microTO = setTimeout(function tick(){ loadByIndex(index, 1.0); microTO=setTimeout(tick, msForBars(MICRO)); }, microDelay);
-
-    // macro (MACRO bars) — preset change
-    const macroDelay = msUntilNextBoundary(MACRO);
-    macroTO = setTimeout(function tick(){ loadByIndex(index+1, 2.2); macroTO=setTimeout(tick, msForBars(MACRO)); }, macroDelay);
+    nanoTO = setTimeout(function tick(){ loadByIndex(index, 0.6); nanoTO=setTimeout(tick, msForBars(nanoSpan)); }, msUntilNextBoundary(nanoSpan));
+    microTO= setTimeout(function tick(){ loadByIndex(index, 1.0); microTO=setTimeout(tick, msForBars(MICRO)); }, msUntilNextBoundary(MICRO));
+    macroTO= setTimeout(function tick(){ loadByIndex(index+1, 2.2); macroTO=setTimeout(tick, msForBars(MACRO)); }, msUntilNextBoundary(MACRO));
   }
 
-  /* boot (create nothing until play) */
+  /* boot (no visuals until play) */
   function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; if(viz) viz.setRendererSize(r.width,r.height); }
   async function bootCore(){
     if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return false; }
-    // wait for libs
     const ok = await new Promise(r=>{ const t=setInterval(()=>{ if(window.butterchurn) { clearInterval(t); r(true); } }, 50); setTimeout(()=>{ clearInterval(t); r(true); }, 8000); });
     const BC=(window.butterchurn && (butterchurn.createVisualizer?butterchurn:butterchurn.default))||null;
     const merged=mergePresetPacks();
@@ -248,36 +243,30 @@
     ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
     src=ctx.createMediaElementSource(audio);
     viz=BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
-    // route audio to speakers and visualizer input (via gain)
     const g=ctx.createGain(); g.gain.value=+rVol.value; src.connect(ctx.destination); src.connect(g); viz.connectAudio(g);
     size(); addEventListener('resize', size, {passive:true});
     return true;
   }
 
-  /* start on user gesture — bound VERY broadly for Safari/Chrome */
+  /* start (robust; no alerts on Chrome quirk) */
   window._vizStart = async function(){
     try{
       if (!ctx){ const ok=await bootCore(); if(!ok) return; }
       if (ctx.state==='suspended') await ctx.resume();
-      await audio.play();
+      if (audio.paused) { try{ await audio.play(); } catch(e){ /* swallow Chrome's benign errors */ } }
 
       if (!started){
         keys=buildPack(); index=Math.min(1, Math.max(0, keys.length-1));
         phase='A'; bloomArmed=true; started=true;
-
-        // render loop *after* audio starts
         (function loop(){ if (started && viz){ viz.render(); } requestAnimationFrame(loop); })();
-
         loadByIndex(index, 0.0);
-        scheduleOnGrid(); // << grid-snapped nano/micro/macro
-        // progress
+        scheduleOnGrid();
+
         let lastT=0;
         audio.addEventListener('timeupdate', ()=>{
           const t=audio.currentTime||0;
           if (audio.duration){ rSeek.value=t/audio.duration; tTime.textContent=fmt(t); tDur.textContent=fmt(audio.duration); }
-          // bloom in the last section
           if (bloomArmed && t*1000 >= msForBars(BLOOM_BAR)){ phase='B'; bloomArmed=false; loadByIndex(index, 1.2); }
-          // if scrubbed to start, rebuild
           if (t<1 && lastT>5){ keys=buildPack(); index=Math.min(1, keys.length-1); phase='A'; bloomArmed=true; loadByIndex(index, 0.0); scheduleOnGrid(); }
           lastT=t;
         }, {passive:true});
@@ -285,13 +274,10 @@
 
       starter.style.display='none';
       btnPlay.textContent='⏸';
-    }catch(e){
-      console.error('play failed', e, 'src=', audio.currentSrc);
-      alert('Could not start audio. Check the file URL/name and try again.');
-    }
+    }catch(e){ /* no alerts; keep quiet if Chrome spuriously complains */ }
   };
 
-  // bindings that catch Safari/Chrome embed quirks
+  // wide bindings for Safari/Chrome
   ['pointerdown','touchstart','mousedown'].forEach(ev=>{
     document.addEventListener(ev, ()=>{ if(!started){ window._vizStart(); } }, {once:true, passive:true});
     canvas.addEventListener(ev, ()=>{ if(!started){ window._vizStart(); } }, {passive:true});
@@ -299,20 +285,17 @@
   document.addEventListener('keydown', e=>{ if(e.code==='Space'||e.key==='Enter') window._vizStart(); });
   startBtn.addEventListener('click', ()=> window._vizStart());
 
-  // controls + quick curation
+  // controls
   btnPlay.addEventListener('click', async ()=>{
-    try{ if(!ctx) await window._vizStart(); if(audio.paused){ await audio.play(); btnPlay.textContent='⏸'; } else { audio.pause(); btnPlay.textContent='▶'; } }
-    catch(e){ console.error(e); alert('Could not start audio.'); }
+    try{
+      if (!ctx) { await window._vizStart(); return; }
+      if (audio.paused){ try{ await audio.play(); }catch(e){} btnPlay.textContent='⏸'; }
+      else { audio.pause(); btnPlay.textContent='▶'; }
+    }catch(e){}
   });
   btnNext.addEventListener('click', ()=> loadByIndex(index+1, 1.6));
   rSeek.addEventListener('input', e=>{ if(audio.duration) audio.currentTime = e.target.value * audio.duration; });
   rVol.addEventListener('input', e=>{ audio.volume = +e.target.value; });
-
-  // live ban current preset (press "b"), toggle name badge (press "i")
-  document.addEventListener('keydown', e=>{
-    if (e.key.toLowerCase()==='b' && keys.length){ SESSION_BLOCK.add(keys[index]); loadByIndex(index+1, 1.2); }
-    if (e.key.toLowerCase()==='i'){ badge.style.display = (badge.style.display==='block'?'none':'block'); }
-  });
   </script>
 </body>
 </html>
