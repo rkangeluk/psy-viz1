@@ -14,23 +14,27 @@
   html,body{margin:0;height:100%;background:#fff;color:var(--ui-fg);font:var(--font)}
   #vizwrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}
   #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
+
+  /* Hover-only controls (no JS-triggered flashes) */
   .ui{
     position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.75rem;
     padding:.6rem .8rem;background:var(--ui-bg);color:var(--ui-fg);font:var(--font);
     border-top-left-radius:10px;border-top-right-radius:10px;opacity:0;transform:translateY(8px);
     transition:opacity .25s ease, transform .25s ease;pointer-events:none;
   }
-  /* Hover ONLY — no JS-triggered flashes */
   #vizwrap:hover .ui{opacity:1;transform:none;pointer-events:auto}
 
-  .starter{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45))}
+  .starter{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45))
+  }
   .play-oval{
     all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
     width:112px;height:72px;border-radius:9999px;background:var(--play-oval);
     box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18)
   }
   .play-oval svg{width:24px;height:24px;fill:#fff}
+
   .btn{
     all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
     width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)
@@ -39,9 +43,14 @@
   .pill{all:unset;cursor:pointer;background:rgba(0,0,0,.06);padding:.35rem .6rem;border-radius:999px}
   .pill:hover{background:rgba(0,0,0,.12)}
   .label{opacity:.85;min-width:52px;text-align:right}
-  .grow{flex:1}.spacer{width:8px}
-  input[type="range"]{-webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none}
-  input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
+  .grow{flex:1}
+  .spacer{width:8px}
+  input[type="range"]{
+    -webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none
+  }
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)
+  }
 </style>
 </head>
 <body>
@@ -60,18 +69,21 @@
     </div>
 
     <div id="starter" class="starter" role="dialog" aria-label="Click to start">
-      <button id="startBtn" class="play-oval" aria-label="Play">
+      <!-- Inline onclick = most reliable first-gesture path -->
+      <button id="startBtn" class="play-oval" aria-label="Play"
+              onclick="window._vizStart && window._vizStart()">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
       </button>
     </div>
 
-    <audio id="player" preload="auto" crossorigin="anonymous">
+    <!-- playsinline added for iOS/Safari -->
+    <audio id="player" preload="auto" playsinline crossorigin="anonymous">
       <source src="track.mp3" type="audio/mpeg">
       <!-- <source src="track.wav" type="audio/wav"> -->
     </audio>
   </div>
 
-  <!-- Butterchurn core + core presets only -->
+  <!-- Butterchurn core + core presets only (stable) -->
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
@@ -112,18 +124,18 @@
     if (viz) viz.setRendererSize(r.width, r.height);
   }
 
-  // Build order: #11, #21, #22 + next 8 names from the list, skipping dups
+  // Sequence: #11, #21, #22 + next 8 (deduped)
   function buildSequence(){
     const names = PRESET_NAMES;
-    const by1 = n => names[n-1];                   // convert to zero-based
+    const by1 = n => names[n-1];
     const first = [by1(11), by1(21), by1(22)].filter(Boolean);
     const extras = names.filter(n => !first.includes(n)).slice(0, 8);
     const seq = first.concat(extras);
-    log('Preset count:', names.length, '| start picks:', first, '| extra picks:', extras.length);
+    log('Preset count:', names.length, '| start picks:', first, '| extras:', extras.length);
     return seq.length ? seq : names;
   }
 
-  // **FIX**: no UI flash here; removed .show-ui toggling
+  // **No UI flash here**
   function loadByName(name, blend=1.4){
     const p = PRESET_DICT[name];
     if (!p) { log('Missing preset:', name); return; }
@@ -135,91 +147,10 @@
     loadByName(keys[index], blend);
   }
 
-  // Timing: 140 BPM → 64 bars (unchanged)
+  // Timing: 140 BPM → 64 bars
   const BPM = 140;
   const MS_PER_BAR = (60000 / BPM) * 4;
   function reschedule(){
     if (timer) clearInterval(timer);
     const interval = Math.round(MS_PER_BAR * 64);
-    timer = setInterval(()=> loadByIndex(index+1, 1.6), interval);
-    log('Auto-change every', interval, 'ms');
-  }
-
-  function buildVizInput(c, mediaSource){
-    mediaSource.connect(c.destination); // speakers (clean)
-    const gain = c.createGain(); gain.gain.value = +rVol.value;
-    mediaSource.connect(gain);          // visuals branch with sensitivity
-    return gain;
-  }
-
-  async function boot(){
-    if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return; }
-    BC = getBC();
-    if (!BC || !window.butterchurnPresets){ alert('Libraries failed to load.'); return; }
-
-    if (!ctx){
-      const LIB = (window.butterchurnPresets.default || window.butterchurnPresets);
-      PRESET_DICT = LIB.getPresets();
-      PRESET_NAMES = Object.keys(PRESET_DICT);
-      log('Core presets available:', PRESET_NAMES.length);
-
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
-      src = ctx.createMediaElementSource(audio);
-
-      const input = buildVizInput(ctx, src);
-      viz = BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
-      viz.connectAudio(input);
-
-      keys = buildSequence();
-      loadByIndex(0, 0);
-
-      function loop(){ viz.render(); requestAnimationFrame(loop); }
-      requestAnimationFrame(loop);
-
-      size(); window.addEventListener('resize', size);
-      reschedule();
-
-      // update UI + restart logic
-      let lastT=0;
-      audio.addEventListener('timeupdate', ()=>{
-        const t = audio.currentTime||0;
-        if (audio.duration){
-          rSeek.value = t / audio.duration;
-          tTime.textContent = fmt(t);
-          tDur.textContent  = fmt(audio.duration);
-        }
-        if (t<1 && lastT>5){ index=0; keys=buildSequence(); loadByIndex(0,0); reschedule(); }
-        lastT = t;
-      });
-    }
-    if (ctx.state === 'suspended') await ctx.resume();
-  }
-
-  // ===== start + controls (robust) =====
-  function showErr(e){ console.error('Start/play error:', e); alert('Could not start audio. See console for details.'); }
-
-  async function startPlayback(){
-    try{
-      if (!ctx) await boot();
-      if (ctx.state === 'suspended') await ctx.resume();
-      await audio.play();
-      document.getElementById('starter').style.display='none';
-      btnPlay.textContent='⏸';
-    }catch(e){ showErr(e); }
-  }
-  document.getElementById('startBtn').addEventListener('click', startPlayback);
-  document.getElementById('starter').addEventListener('click', (e)=>{ if (e.target.id==='starter') startPlayback(); });
-  canvas.addEventListener('click', startPlayback);
-  document.addEventListener('keydown', (e)=>{ if (e.code==='Space'||e.key==='Enter') startPlayback(); });
-
-  btnPlay.addEventListener('click', async ()=>{
-    try{
-      if (!ctx) await boot();
-      if (audio.paused){ await audio.play(); btnPlay.textContent='⏸'; }
-      else { audio.pause(); btnPlay.textContent='▶'; }
-    }catch(e){ showErr(e); }
-  });
-
-  document.getElementById('next').addEventListener('click', ()=> loadByIndex(index+1, 1.2));
-  document.getElementById('seek').addEventListener('input', e=>{
-    if (audio.duration
+    timer = setInter
