@@ -14,33 +14,24 @@
   html,body{margin:0;height:100%;background:#000;color:var(--ui-fg);font:var(--font)}
   #vizwrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}
   #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
-
-  /* Hover UI */
+  /* Hover-only UI (no JS-triggered flashes) */
   .ui{
     position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.75rem;
     padding:.6rem .8rem;background:var(--ui-bg);color:var(--ui-fg);font:var(--font);
     border-top-left-radius:10px;border-top-right-radius:10px;opacity:0;transform:translateY(8px);
     transition:opacity .25s ease, transform .25s ease;pointer-events:none;
   }
-  #vizwrap:hover .ui, #vizwrap.show-ui .ui{opacity:1;transform:none;pointer-events:auto}
-
+  #vizwrap:hover .ui{opacity:1;transform:none;pointer-events:auto}
   /* Center play oval */
-  .starter{
-    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45));
-  }
-  .play-oval{
-    all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  .starter{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45))}
+  .play-oval{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
     width:112px;height:72px;border-radius:9999px;background:var(--play-oval);
-    box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18);
-  }
+    box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18)}
   .play-oval svg{width:24px;height:24px;fill:#fff}
-
   /* Buttons / sliders */
-  .btn{
-    all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-    width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)
-  }
+  .btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+    width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)}
   .btn:hover{background:rgba(0,0,0,.12)}
   .pill{all:unset;cursor:pointer;background:rgba(0,0,0,.06);padding:.35rem .6rem;border-radius:999px}
   .pill:hover{background:rgba(0,0,0,.12)}
@@ -48,11 +39,14 @@
   .grow{flex:1}.spacer{width:8px}
   input[type="range"]{-webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none}
   input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
+  /* hidden probe for white-out detection */
+  #probe{position:absolute;left:-9999px;top:-9999px;width:64px;height:64px}
 </style>
 </head>
 <body>
   <div id="vizwrap" aria-label="Audio visualizer">
     <canvas id="viz"></canvas>
+    <canvas id="probe" width="64" height="64" aria-hidden="true"></canvas>
 
     <div class="ui" role="group" aria-label="Player controls">
       <button id="play" class="btn" aria-label="Play/Pause">▶</button>
@@ -66,31 +60,51 @@
     </div>
 
     <div id="starter" class="starter" role="dialog" aria-label="Click to start">
-      <button id="startBtn" class="play-oval" aria-label="Play">
+      <button id="startBtn" class="play-oval" aria-label="Play"
+              onclick="window._vizStart && window._vizStart()">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
       </button>
     </div>
 
-    <audio id="player" preload="auto" crossorigin="anonymous">
+    <!-- playsinline for Safari/iOS -->
+    <audio id="player" preload="auto" playsinline crossorigin="anonymous">
       <source src="track3.mp3" type="audio/mpeg">
-      <!-- Optional fallback if your file is .mps:
-      <source src="track3.mps" type="audio/mpeg">
-      -->
     </audio>
   </div>
 
-  <!-- Butterchurn libs (merged packs for a bigger fresh pool) -->
-  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
-  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
-  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
-  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsNonMinimal.min.js"></script>
-  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
-  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra2.min.js"></script>
+  <!-- Butterchurn libs with jsDelivr fallback -->
+  <script>
+  function loadScriptPair(primary, fallback){
+    return new Promise((resolve,reject)=>{
+      const s=document.createElement('script'); s.src=primary; s.async=false;
+      s.onload=resolve;
+      s.onerror=()=>{ const f=document.createElement('script'); f.src=fallback; f.async=false;
+        f.onload=resolve; f.onerror=()=>reject(new Error('CDN fail '+primary)); document.head.appendChild(f); };
+      document.head.appendChild(s);
+    });
+  }
+  (async function libs(){
+    const u='https://unpkg.com/', j='https://cdn.jsdelivr.net/npm/';
+    await loadScriptPair(u+'butterchurn@2.6.7/lib/butterchurn.min.js',              j+'butterchurn@2.6.7/lib/butterchurn.min.js');
+    await loadScriptPair(u+'butterchurn@2.6.7/lib/butterchurnExtraImages.min.js',   j+'butterchurn@2.6.7/lib/butterchurnExtraImages.min.js');
+    await loadScriptPair(u+'butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js',        j+'butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js');
+    await loadScriptPair(u+'butterchurn-presets@2.4.7/lib/butterchurnPresetsNonMinimal.min.js', j+'butterchurn-presets@2.4.7/lib/butterchurnPresetsNonMinimal.min.js');
+    await loadScriptPair(u+'butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js',   j+'butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js');
+    await loadScriptPair(u+'butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra2.min.js',  j+'butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra2.min.js');
+    window._libsReady = true;
+  })();
+  </script>
 
   <script>
+  /* ---------- URL params (optional permanent bans via ?ban=Name1,Name2) ---------- */
+  const url = new URL(location.href);
+  const BAN_PARAM = url.searchParams.get('ban') || '';
+  const USER_BLOCK = new Set(BAN_PARAM.split(',').map(s=>s.trim()).filter(Boolean));
+
   /* ---------- helpers ---------- */
   const pad = s => (s<10?'0':'')+s;
   const fmt = t => (!isFinite(t)?'0:00': ((t/60)|0)+':'+pad((t%60)|0));
+  const log = (...a)=>console.log('[viz3]', ...a);
   function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
   function seededShuffle(arr, seedStr){
     let seed=0; for(let i=0;i<seedStr.length;i++) seed=(seed*31 + seedStr.charCodeAt(i))>>>0;
@@ -99,7 +113,7 @@
   }
 
   /* ---------- DOM ---------- */
-  const wrap=document.getElementById('vizwrap'), canvas=document.getElementById('viz');
+  const wrap=document.getElementById('vizwrap'), canvas=document.getElementById('viz'), probe=document.getElementById('probe');
   const starter=document.getElementById('starter'), startBtn=document.getElementById('startBtn');
   const audio=document.getElementById('player'), btnPlay=document.getElementById('play'), btnNext=document.getElementById('next');
   const rSeek=document.getElementById('seek'), rVol=document.getElementById('vol'), tTime=document.getElementById('time'), tDur=document.getElementById('dur');
@@ -107,13 +121,11 @@
   /* ---------- state ---------- */
   let ctx, src, viz, PRESETS={dict:{},names:[]};
   let keys=[], index=0, timer=null, phase='A', switched=false, autoChangeCount=0;
-  let bar80Timeout=null;
+  let bar80Timeout=null, whiteWatch=null, started=false;
+  const SESSION_BLOCK = new Set();
+  const BASE_BLOCK = new Set(['Geiss - Desert Rose']); // known offender
 
   /* ---------- preset pool (merged → filtered → seeded) ---------- */
-  const BLOCKLIST = new Set([
-    'Geiss - Desert Rose' // known to white-out on some GPUs
-  ]);
-
   function mergePresetPacks(){
     const libs=[];
     if (window.butterchurnPresets) libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
@@ -126,70 +138,85 @@
 
   function buildPack(){
     const names = PRESETS.names;
-    // filter to bass/minimal/trippy aesthetics
     const re = /(tunnel|spiral|kaleid|kaleidos|vortex|wormhole|fractal|nebula|minimal|grid|lines|rings|radial|lofi|mono)/i;
-    let pool = names.filter(n => re.test(n) && !BLOCKLIST.has(n));
-    if (pool.length < 12) pool = names.filter(n=>!BLOCKLIST.has(n)); // fallback to all (minus blocklist)
-    if (pool.length < 8)  pool = names; // last-resort: include everything
-    // Allow overriding/refreshing the pack with a URL seed (?seed=anything)
-    const url = new URL(window.location.href);
+    let pool = names.filter(n => re.test(n) && !BASE_BLOCK.has(n) && !USER_BLOCK.has(n) && !SESSION_BLOCK.has(n));
+    if (pool.length < 12) pool = names.filter(n=>!BASE_BLOCK.has(n) && !USER_BLOCK.has(n) && !SESSION_BLOCK.has(n));
+    if (pool.length < 8)  pool = names.filter(n=>!SESSION_BLOCK.has(n));
     const seed = url.searchParams.get('seed') || 'track3-bass-minimal-unique';
-    const shuffled = seededShuffle(pool, seed);
-    return shuffled;
+    return seededShuffle(pool, seed);
   }
 
-  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; viz && viz.setRendererSize(r.width,r.height); }
+  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; if(viz) viz.setRendererSize(r.width,r.height); }
 
-  /* ---------- per-phase style tweaks ---------- */
-  function styleForPhase(preset){
-    const p = JSON.parse(JSON.stringify(preset));
-    p.ob_a=0; p.ib_a=0; // tidy edges
-    if (phase==='A'){   // tighter, bass-forward
+  /* ---------- phase styling ---------- */
+  function styleForPhase(base){
+    const p = JSON.parse(JSON.stringify(base));
+    p.ob_a=0; p.ib_a=0;
+    if (phase==='A'){
       p.decay = Math.min(0.985, p.decay || 0.98);
       p.gamma = p.gamma || 1.2;
       p.per_frame = (p.per_frame||"") +
         "q1=0.75*q1+0.25*bass_att; zoom=zoom*(1.0+0.012*q1); rot=rot+0.0008*(q1-0.5);";
-    } else {            // warmer, longer trails for vocals/pads
-      p.decay = 0.992;
-      p.gamma = 1.15;
-      p.shapecolorr=0.98; p.shapecolorg=0.15; p.shapecolorb=0.65; p.shapecolora=0.9;
+    } else {
+      p.decay = 0.992; p.gamma = 1.15;
       p.per_frame = (p.per_frame||"") +
         "q1=0.85*q1+0.15*bass_att; q2=0.85*q2+0.15*mid_att; qE=0.6*q1+0.4*q2; zoom=zoom*(1.0+0.007*qE); rot=rot+0.0012;";
     }
     return p;
   }
 
-  /* ---------- safe loading with fallback ---------- */
+  /* ---------- safe load + white-out watchdog ---------- */
+  function armWhiteWatch(presetName){
+    if (whiteWatch) { clearInterval(whiteWatch); whiteWatch=null; }
+    const pctx = probe.getContext('2d', {willReadFrequently:true}); if(!pctx) return;
+    let brightCount=0;
+    whiteWatch=setInterval(()=>{
+      try{
+        pctx.drawImage(canvas, 0,0, probe.width, probe.height);
+        const {data} = pctx.getImageData(0,0, probe.width, probe.height);
+        let sum=0, n=0;
+        for (let i=0;i<data.length;i+=4){
+          const r=data[i]/255, g=data[i+1]/255, b=data[i+2]/255;
+          sum += 0.2126*r + 0.7152*g + 0.0722*b; n++;
+        }
+        const avg = sum/n;
+        if (avg > 0.97) brightCount++; else brightCount=0;
+        if (brightCount >= 3){
+          SESSION_BLOCK.add(presetName);
+          log('White-out detected, skipping:', presetName);
+          keys = buildPack();
+          loadByIndex(index+1, 1.2);
+          brightCount=0;
+        }
+      }catch(e){ clearInterval(whiteWatch); whiteWatch=null; }
+    }, 2000);
+  }
+
   function tryLoad(name, blend){
     try{
-      const base=PRESETS.dict[name];
-      if (!base) throw new Error('missing preset '+name);
+      const base=PRESETS.dict[name]; if (!base) throw new Error('missing preset '+name);
       viz.loadPreset(styleForPhase(base), blend);
-      wrap.classList.add('show-ui'); clearTimeout(wrap._h); wrap._h=setTimeout(()=>wrap.classList.remove('show-ui'), 800);
+      log('Loaded:', name);
+      armWhiteWatch(name);
       return true;
-    }catch(e){
-      console.warn('preset load failed:', name, e);
-      return false;
-    }
+    }catch(e){ console.warn('preset load failed:', name, e); return false; }
   }
 
   function loadByIndex(i, blend=1.0){
     if (!keys.length) keys=buildPack();
     index=((i%keys.length)+keys.length)%keys.length;
-    let tries=0; let ok=false;
-    while(tries<Math.min(6, keys.length) && !(ok=tryLoad(keys[index], blend))){
+    let tries=0, ok=false;
+    while(tries<Math.min(6,keys.length) && !(ok=tryLoad(keys[index], blend))){
       index=(index+1)%keys.length; tries++;
     }
     if (!ok){
-      // rebuild pack once, then hard-fallback to core-only if still failing
       PRESETS=mergePresetPacks(); keys=buildPack(); index=index%keys.length;
       if (!tryLoad(keys[index], 0.0)){
-        console.warn('hard fallback to core-only');
-        // core-only emergency path
         if (window.butterchurnPresets){
-          const lib=(butterchurnPresets.default||butterchurnPresets), dict=lib.getPresets(), names=Object.keys(dict);
-          PRESETS={dict,names}; keys=names.filter(n=>!BLOCKLIST.has(n)); index=index%keys.length;
-          tryLoad(keys[index], 0.0);
+          const core=(butterchurnPresets.default||butterchurnPresets).getPresets();
+          PRESETS={dict:core, names:Object.keys(core)};
+          keys=PRESETS.names.filter(n=>!BASE_BLOCK.has(n) && !USER_BLOCK.has(n) && !SESSION_BLOCK.has(n));
+          index=index%keys.length; tryLoad(keys[index], 0.0);
         }
       }
     }
@@ -197,14 +224,14 @@
 
   /* ---------- timing & cadence ---------- */
   const BPM=134, MS_PER_BAR=(60000/BPM)*4, BAR80_TIME=MS_PER_BAR*80;
-  function cadenceBars(){ return (autoChangeCount<2)?16:32; }
+  function cadenceBars(){ return (autoChangeCount<2)?16:32; } // first two at 16 bars, then 32
   function reschedule(){
     if (timer) clearInterval(timer);
     const interval=Math.round(MS_PER_BAR*cadenceBars());
     timer=setInterval(()=>{
       loadByIndex(index+1, 1.0);
       autoChangeCount++;
-      if (autoChangeCount===2) reschedule(); // switch cadence 16→32
+      if (autoChangeCount===2) reschedule(); // switch 16→32
     }, interval);
   }
   function scheduleBar80(){
@@ -214,7 +241,7 @@
       if (!switched){
         phase='B'; switched=true;
         if (timer){ clearInterval(timer); timer=null; }
-        loadByIndex(index+1, 1.0);  // FORCE next preset at vocals
+        loadByIndex(index+1, 1.0);  // force a change right at bar 80
         reschedule();
       }
     }, msLeft);
@@ -222,21 +249,26 @@
 
   /* ---------- audio routing ---------- */
   function buildVizInput(c, mediaSource){
-    mediaSource.connect(c.destination);               // speakers
-    const g=c.createGain(); g.gain.value=+rVol.value; // visuals input (sensitivity tied to volume)
+    mediaSource.connect(c.destination);
+    const g=c.createGain(); g.gain.value=+rVol.value;
     mediaSource.connect(g);
     return g;
   }
 
   /* ---------- boot ---------- */
-  async function boot(){
-    if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return; }
+  async function bootCore(){
+    if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return false; }
+    // wait for libs (up to ~8s)
+    await new Promise(res=>{
+      let t=0; const h=setInterval(()=>{ if (window._libsReady){ clearInterval(h); res(); } if (++t>80){ clearInterval(h); res(); } }, 100);
+    });
     const BC=(window.butterchurn && (butterchurn.createVisualizer?butterchurn:butterchurn.default))||null;
-    const merged=mergePresetPacks(); if (!BC || !merged.names.length){ alert('Preset libraries failed to load.'); return; }
+    const merged=mergePresetPacks();
+    if (!BC || !merged.names.length){ alert('Preset libraries failed to load.'); return false; }
     PRESETS=merged;
 
     if (!ctx){
-      ctx=new (window.AudioContext||window.webkitAudioContext)();
+      ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
       src=ctx.createMediaElementSource(audio);
       viz=BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
       viz.connectAudio(buildVizInput(ctx, src));
@@ -245,59 +277,64 @@
       index = Math.min(2, Math.max(0, keys.length-1)); // start on the 3rd preset
       autoChangeCount=0; phase='A'; switched=false;
 
-      loadByIndex(index, 0.0);
-
-      (function loop(){ viz.render(); requestAnimationFrame(loop); })();
-      size(); window.addEventListener('resize', size);
-
-      reschedule();
-      scheduleBar80();
-
-      // time UI + restart if scrubbed to the start
-      let lastT=0;
-      audio.addEventListener('timeupdate', ()=>{
-        const t=audio.currentTime||0;
-        if (audio.duration){
-          rSeek.value=t/audio.duration; tTime.textContent=fmt(t); tDur.textContent=fmt(audio.duration);
-        }
-        if (t<1 && lastT>5){
-          keys=buildPack(); index=Math.min(2, keys.length-1);
-          autoChangeCount=0; phase='A'; switched=false;
-          loadByIndex(index, 0.0); reschedule(); scheduleBar80();
-        }
-        lastT=t;
-      });
-      audio.addEventListener('seeked', scheduleBar80);
-      audio.addEventListener('play', scheduleBar80);
-      audio.addEventListener('loadedmetadata', scheduleBar80);
+      size(); addEventListener('resize', size, {passive:true});
     }
-    if (ctx.state==='suspended') await ctx.resume();
+    return true;
   }
 
-  /* ---------- start + controls ---------- */
+  /* ---------- start + controls (robust) ---------- */
   async function startPlayback(){
     try{
-      if (!ctx) await boot();
+      if (!ctx){ const ok=await bootCore(); if(!ok) return; }
       if (ctx.state==='suspended') await ctx.resume();
       await audio.play();
+
+      if (!started){
+        started=true;
+        loadByIndex(index, 0.0);
+        (function loop(){ if (viz) viz.render(); requestAnimationFrame(loop); })();
+        reschedule(); scheduleBar80();
+
+        // progress + restart
+        let lastT=0;
+        audio.addEventListener('timeupdate', ()=>{
+          const t=audio.currentTime||0;
+          if (audio.duration){ rSeek.value=t/audio.duration; tTime.textContent=fmt(t); tDur.textContent=fmt(audio.duration); }
+          if (t<1 && lastT>5){
+            keys=buildPack(); index=Math.min(2, keys.length-1);
+            autoChangeCount=0; phase='A'; switched=false;
+            loadByIndex(index, 0.0); reschedule(); scheduleBar80();
+          }
+          lastT=t;
+        }, {passive:true});
+        audio.addEventListener('seeked', scheduleBar80);
+        audio.addEventListener('play', scheduleBar80);
+        audio.addEventListener('loadedmetadata', scheduleBar80);
+      }
+
       starter.style.display='none';
       btnPlay.textContent='⏸';
     }catch(e){
-      console.error('play failed', e, 'src=', audio.currentSrc);
-      alert('Could not start audio. Check the file URL/name.');
+      console.warn('play warning', e);
     }
   }
+
+  // Global starter + wide bindings for Safari/embeds
+  window._vizStart = async function(){ return startPlayback(); };
+  ['pointerdown','touchstart','mousedown'].forEach(ev=>{
+    document.addEventListener(ev, ()=>{ if(!ctx || audio.paused) window._vizStart(); }, {once:true, passive:true});
+    canvas.addEventListener(ev, ()=>{ if(!ctx || audio.paused) window._vizStart(); }, {passive:true});
+  });
   startBtn.addEventListener('click', startPlayback);
   starter.addEventListener('click', e=>{ if(e.target===starter) startPlayback(); });
   canvas.addEventListener('click', startPlayback);
   document.addEventListener('keydown', e=>{ if(e.code==='Space'||e.key==='Enter') startPlayback(); });
 
   btnPlay.addEventListener('click', async ()=>{
-    try{
-      if (!ctx) await boot();
+    try{ if (!ctx) await startPlayback();
       if (audio.paused){ await audio.play(); btnPlay.textContent='⏸'; }
       else { audio.pause(); btnPlay.textContent='▶'; }
-    }catch(e){ console.error(e); alert('Could not start audio.'); }
+    }catch(e){ console.warn(e); }
   });
   btnNext.addEventListener('click', ()=> loadByIndex(index+1, 0.9));
   rSeek.addEventListener('input', e=>{ if(audio.duration) audio.currentTime = e.target.value * audio.duration; });
