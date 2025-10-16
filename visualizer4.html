@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualizer – Track 4 (ambient evolving, smooth)</title>
+<title>Visualizer – Track 4 (ambient evolving, grid-snapped)</title>
 <style>
   :root{ --ui-bg: rgba(255,255,255,.88); --ui-fg:#3e3e3e; --play-oval: rgba(140,195,120,.38);
          --font: 400 12px/22px Clarkson,"Proxima Nova","Open Sans","Helvetica Neue",Helvetica,Arial,sans-serif; }
@@ -30,7 +30,9 @@
   .grow{flex:1}.spacer{width:8px}
   input[type="range"]{-webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none}
   input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
-  /* hidden probe for white-out detection */
+  /* optional preset name badge (hidden by default) */
+  #badge{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.45);color:#fff;padding:6px 8px;border-radius:8px;
+         font:11px/1.2 ui-monospace,Menlo,Consolas,monospace;display:none;max-width:60ch;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #probe{position:absolute;left:-9999px;top:-9999px;width:64px;height:64px}
 </style>
 </head>
@@ -38,6 +40,7 @@
   <div id="vizwrap" aria-label="Audio visualizer">
     <canvas id="viz"></canvas>
     <canvas id="probe" width="64" height="64" aria-hidden="true"></canvas>
+    <div id="badge" aria-hidden="true"></div>
 
     <div class="ui" role="group" aria-label="Player controls">
       <button id="play" class="btn" aria-label="Play/Pause">▶</button>
@@ -59,7 +62,7 @@
     <audio id="player" preload="auto" playsinline crossorigin="anonymous"></audio>
   </div>
 
-  <!-- libs (unpkg w/ jsDelivr fallback) -->
+  <!-- libs with jsDelivr fallback -->
   <script>
   function loadScriptPair(primary, fallback){
     return new Promise((resolve,reject)=>{
@@ -81,46 +84,48 @@
   </script>
 
   <script>
-  /* ===== params ===== */
+  /* params */
   const url = new URL(location.href);
   const P = (k,d)=>url.searchParams.get(k)||d;
-
   const AUDIO_FILE = P('audio','track4.mp3');
   const BPM        = parseFloat(P('bpm','124'));
   const BARS       = parseInt(P('bars','194'),10);
-  const MICRO      = parseInt(P('micro','4'),10);    // more frequent micro
-  const MACRO      = parseInt(P('macro','24'),10);
+  const MICRO      = parseInt(P('micro','4'),10);     // micro morphs: 4 bars
+  const MACRO      = parseInt(P('macro','32'),10);    // macro changes: 16 or 32 bars (grid-snapped)
   const BLOOM_BAR  = parseInt(P('bloom','160'),10);
   const SEED       = P('seed','track4-ambient-evolving');
-  const BAN_PARAM  = P('ban','');
+  const BAN_PARAM  = P('ban','');                     // permanent bans
+  const SHOWNAME   = P('showname','0')==='1';         // ?showname=1 to show current preset name
 
-  /* ===== DOM ===== */
+  /* DOM */
   const wrap=document.getElementById('vizwrap'), canvas=document.getElementById('viz'), probe=document.getElementById('probe');
+  const badge=document.getElementById('badge');
   const starter=document.getElementById('starter'), startBtn=document.getElementById('startBtn');
   const audio=document.getElementById('player'), btnPlay=document.getElementById('play'), btnNext=document.getElementById('next');
   const rSeek=document.getElementById('seek'), rVol=document.getElementById('vol'), tTime=document.getElementById('time'), tDur=document.getElementById('dur');
   audio.src=AUDIO_FILE;
 
-  /* ===== helpers ===== */
+  /* helpers */
   const pad=s=>(s<10?'0':'')+s;
   const fmt=t=>(!isFinite(t)?'0:00':((t/60)|0)+':'+pad((t%60)|0));
   const MS_PER_BAR=(60000/BPM)*4, msForBars=b=>Math.round(MS_PER_BAR*b);
   function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
   function seededShuffle(arr, seedStr){
-    let seed=0; for(let i=0;i<seedStr.length;i++) seed=(seed*31+seedStr.charCodeAt(i))>>>0;
-    function rnd(){ seed=(1664525*seed+1013904223)>>>0; return (seed&0xfffffff)/0x10000000; }
+    let seed=0; for(let i=0;i<seedStr.length;i++) seed=(seed*31 + seedStr.charCodeAt(i))>>>0;
+    function rnd(){ seed=(1664525*seed+1013904223)>>>0; return (seed & 0xfffffff)/0x10000000; }
     const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a;
   }
 
-  /* ===== state ===== */
+  /* state */
   let ctx, src, viz, PRESETS={dict:{},names:[]};
   let keys=[], index=0, phase='A', bloomArmed=true, started=false;
-  let nanoTimer=null, microTimer=null, macroTimer=null, whiteWatch=null;
+  let nanoTO=null, microTO=null, macroTO=null; // grid-snapped timeouts
+  let whiteWatch=null;
   const SESSION_BLOCK = new Set();
   const BASE_BLOCK=new Set(['Geiss - Desert Rose']);
   const USER_BLOCK=new Set(BAN_PARAM?BAN_PARAM.split(',').map(s=>s.trim()).filter(Boolean):[]);
 
-  /* ===== packs ===== */
+  /* packs */
   function mergePresetPacks(){
     const libs=[];
     if (window.butterchurnPresets) libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
@@ -139,7 +144,175 @@
     return seededShuffle(pool, SEED);
   }
 
-  /* ===== sizing ===== */
+  /* sizing */
   function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; if(viz) viz.setRendererSize(r.width,r.height); }
 
-  /* ===== psychedelic, tex*
+  /* mutation – texture-sensitive (more mid/treble) */
+  function mutatePreset(base, tMs, intensity=1){
+    const p=JSON.parse(JSON.stringify(base));
+    p.ob_a=0; p.ib_a=0;
+    const s = Math.sin(tMs*0.00033)*0.5+0.5, s2= Math.sin(tMs*0.00019+1.2)*0.5+0.5;
+    p.decay = Math.min(0.996, 0.986 + 0.012*s*0.7*intensity);
+    p.gamma = 1.05 + 0.17*s2*0.7*intensity;
+    p.per_frame = (p.per_frame||"") +
+      "qB=0.90*qB+0.10*bass_att; qM=0.85*qM+0.15*mid_att; qT=0.80*qT+0.20*treb_att;" +
+      "qE = 0.25*qB + 0.45*qM + 0.30*qT;" +
+      "rot = rot + 0.0009*sin(time*0.22) + 0.0007*(qE-0.35);" +
+      "zoom = zoom*(1.0 + 0.005*sin(time*0.30) + 0.005*(qM-0.3));" +
+      "warp = 0.014 + 0.010*sin(time*0.18) + 0.006*(qT-0.3);" +
+      "cx = 0.5 + 0.09*sin(time*0.10); cy = 0.5 + 0.09*cos(time*0.08); ";
+    if (phase==='B'){ p.per_frame += "rot=rot+0.0009; zoom=zoom*(1.0+0.008*sin(time*0.41)); warp=0.020;"; }
+    return p;
+  }
+
+  /* load + badge + watchdog */
+  function setBadge(name){ if(!SHOWNAME) return; badge.style.display='block'; badge.textContent=name; }
+  function tryLoadName(name, blend){
+    try{
+      const base=PRESETS.dict[name]; if(!base) throw new Error('missing '+name);
+      const tMs=(audio.currentTime||0)*1000;
+      viz.loadPreset(mutatePreset(base, tMs, phase==='B'?1.2:1.0), blend);
+      setBadge(name);
+      wrap.classList.add('show-ui'); clearTimeout(wrap._h); wrap._h=setTimeout(()=>wrap.classList.remove('show-ui'), 800);
+      armWhiteWatch(name);
+      return true;
+    }catch(e){ console.warn('preset fail', name, e); return false; }
+  }
+  function loadByIndex(i, blend=1.0){
+    if (!keys.length) keys=buildPack();
+    index=((i%keys.length)+keys.length)%keys.length;
+    let tries=0, ok=false;
+    while(tries<Math.min(6,keys.length) && !(ok=tryLoadName(keys[index], blend))){
+      index=(index+1)%keys.length; tries++;
+    }
+    if (!ok){
+      PRESETS=mergePresetPacks(); keys=buildPack(); index=index%keys.length;
+      if (!tryLoadName(keys[index], 0.0) && window.butterchurnPresets){
+        const core=(butterchurnPresets.default||butterchurnPresets).getPresets();
+        PRESETS={dict:core, names:Object.keys(core)};
+        keys=PRESETS.names.filter(n=>!BASE_BLOCK.has(n) && !USER_BLOCK.has(n) && !SESSION_BLOCK.has(n)); index=index%keys.length;
+        tryLoadName(keys[index], 0.0);
+      }
+    }
+  }
+
+  function armWhiteWatch(presetName){
+    if (whiteWatch) { clearInterval(whiteWatch); whiteWatch=null; }
+    const pctx = probe.getContext('2d', {willReadFrequently:true}); if(!pctx) return;
+    let brightCount=0;
+    whiteWatch=setInterval(()=>{
+      try{
+        pctx.drawImage(canvas, 0,0, probe.width, probe.height);
+        const {data} = pctx.getImageData(0,0, probe.width, probe.height);
+        let sum=0, n=0; for (let i=0;i<data.length;i+=4){ const r=data[i]/255, g=data[i+1]/255, b=data[i+2]/255; sum += 0.2126*r + 0.7152*g + 0.0722*b; n++; }
+        const avg = sum/n;
+        if (avg > 0.97) brightCount++; else brightCount=0;
+        if (brightCount >= 3){ SESSION_BLOCK.add(presetName); loadByIndex(index+1, 1.6); brightCount=0; }
+      }catch(e){ clearInterval(whiteWatch); whiteWatch=null; }
+    }, 2000);
+  }
+
+  /* grid-snapped scheduling (no drift) */
+  function clearGridTimers(){ if(nanoTO){clearTimeout(nanoTO);} if(microTO){clearTimeout(microTO);} if(macroTO){clearTimeout(macroTO);} nanoTO=microTO=macroTO=null; }
+  function barsElapsed(){ return (audio.currentTime*1000)/MS_PER_BAR; }
+  function msUntilNextBoundary(spanBars){ // time until next multiple of spanBars
+    const b = barsElapsed(); const next = Math.ceil(b / spanBars) * spanBars; return Math.max(0, Math.round((next - b) * MS_PER_BAR));
+  }
+  function scheduleOnGrid(){
+    clearGridTimers();
+    // nano (2 bars) — subtle morph
+    const nanoSpan=2;
+    const nanoDelay = msUntilNextBoundary(nanoSpan);
+    nanoTO = setTimeout(function tick(){ loadByIndex(index, 0.6); nanoTO=setTimeout(tick, msForBars(nanoSpan)); }, nanoDelay);
+
+    // micro (MICRO bars) — noticeable morph
+    const microDelay = msUntilNextBoundary(MICRO);
+    microTO = setTimeout(function tick(){ loadByIndex(index, 1.0); microTO=setTimeout(tick, msForBars(MICRO)); }, microDelay);
+
+    // macro (MACRO bars) — preset change
+    const macroDelay = msUntilNextBoundary(MACRO);
+    macroTO = setTimeout(function tick(){ loadByIndex(index+1, 2.2); macroTO=setTimeout(tick, msForBars(MACRO)); }, macroDelay);
+  }
+
+  /* boot (create nothing until play) */
+  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; if(viz) viz.setRendererSize(r.width,r.height); }
+  async function bootCore(){
+    if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return false; }
+    // wait for libs
+    const ok = await new Promise(r=>{ const t=setInterval(()=>{ if(window.butterchurn) { clearInterval(t); r(true); } }, 50); setTimeout(()=>{ clearInterval(t); r(true); }, 8000); });
+    const BC=(window.butterchurn && (butterchurn.createVisualizer?butterchurn:butterchurn.default))||null;
+    const merged=mergePresetPacks();
+    if (!BC || !merged.names.length){ alert('Preset libraries failed to load.'); return false; }
+
+    PRESETS=merged;
+    ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
+    src=ctx.createMediaElementSource(audio);
+    viz=BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
+    // route audio to speakers and visualizer input (via gain)
+    const g=ctx.createGain(); g.gain.value=+rVol.value; src.connect(ctx.destination); src.connect(g); viz.connectAudio(g);
+    size(); addEventListener('resize', size, {passive:true});
+    return true;
+  }
+
+  /* start on user gesture — bound VERY broadly for Safari/Chrome */
+  window._vizStart = async function(){
+    try{
+      if (!ctx){ const ok=await bootCore(); if(!ok) return; }
+      if (ctx.state==='suspended') await ctx.resume();
+      await audio.play();
+
+      if (!started){
+        keys=buildPack(); index=Math.min(1, Math.max(0, keys.length-1));
+        phase='A'; bloomArmed=true; started=true;
+
+        // render loop *after* audio starts
+        (function loop(){ if (started && viz){ viz.render(); } requestAnimationFrame(loop); })();
+
+        loadByIndex(index, 0.0);
+        scheduleOnGrid(); // << grid-snapped nano/micro/macro
+        // progress
+        let lastT=0;
+        audio.addEventListener('timeupdate', ()=>{
+          const t=audio.currentTime||0;
+          if (audio.duration){ rSeek.value=t/audio.duration; tTime.textContent=fmt(t); tDur.textContent=fmt(audio.duration); }
+          // bloom in the last section
+          if (bloomArmed && t*1000 >= msForBars(BLOOM_BAR)){ phase='B'; bloomArmed=false; loadByIndex(index, 1.2); }
+          // if scrubbed to start, rebuild
+          if (t<1 && lastT>5){ keys=buildPack(); index=Math.min(1, keys.length-1); phase='A'; bloomArmed=true; loadByIndex(index, 0.0); scheduleOnGrid(); }
+          lastT=t;
+        }, {passive:true});
+      }
+
+      starter.style.display='none';
+      btnPlay.textContent='⏸';
+    }catch(e){
+      console.error('play failed', e, 'src=', audio.currentSrc);
+      alert('Could not start audio. Check the file URL/name and try again.');
+    }
+  };
+
+  // bindings that catch Safari/Chrome embed quirks
+  ['pointerdown','touchstart','mousedown'].forEach(ev=>{
+    document.addEventListener(ev, ()=>{ if(!started){ window._vizStart(); } }, {once:true, passive:true});
+    canvas.addEventListener(ev, ()=>{ if(!started){ window._vizStart(); } }, {passive:true});
+  });
+  document.addEventListener('keydown', e=>{ if(e.code==='Space'||e.key==='Enter') window._vizStart(); });
+  startBtn.addEventListener('click', ()=> window._vizStart());
+
+  // controls + quick curation
+  btnPlay.addEventListener('click', async ()=>{
+    try{ if(!ctx) await window._vizStart(); if(audio.paused){ await audio.play(); btnPlay.textContent='⏸'; } else { audio.pause(); btnPlay.textContent='▶'; } }
+    catch(e){ console.error(e); alert('Could not start audio.'); }
+  });
+  btnNext.addEventListener('click', ()=> loadByIndex(index+1, 1.6));
+  rSeek.addEventListener('input', e=>{ if(audio.duration) audio.currentTime = e.target.value * audio.duration; });
+  rVol.addEventListener('input', e=>{ audio.volume = +e.target.value; });
+
+  // live ban current preset (press "b"), toggle name badge (press "i")
+  document.addEventListener('keydown', e=>{
+    if (e.key.toLowerCase()==='b' && keys.length){ SESSION_BLOCK.add(keys[index]); loadByIndex(index+1, 1.2); }
+    if (e.key.toLowerCase()==='i'){ badge.style.display = (badge.style.display==='block'?'none':'block'); }
+  });
+  </script>
+</body>
+</html>
