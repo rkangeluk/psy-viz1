@@ -46,7 +46,7 @@
   .grow{flex:1}
   .spacer{width:8px}
   input[type="range"]{
-    -webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none
+    -webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:9999px;outline:none
   }
   input[type="range"]::-webkit-slider-thumb{
     -webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)
@@ -83,10 +83,30 @@
     </audio>
   </div>
 
-  <!-- Butterchurn core + core presets only (stable) -->
-  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
-  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
-  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+  <!-- Load libs with fallback (unpkg → jsDelivr) -->
+  <script>
+  function loadScriptPair(primary, fallback){
+    return new Promise((resolve,reject)=>{
+      const s=document.createElement('script'); s.src=primary; s.async=false;
+      s.onload=resolve;
+      s.onerror=()=>{ const f=document.createElement('script'); f.src=fallback; f.async=false;
+        f.onload=resolve; f.onerror=()=>reject(new Error('CDN fail '+primary)); document.head.appendChild(f); };
+      document.head.appendChild(s);
+    });
+  }
+  (async function libs(){
+    const u='https://unpkg.com/', j='https://cdn.jsdelivr.net/npm/';
+    try{
+      await loadScriptPair(u+'butterchurn@2.6.7/lib/butterchurn.min.js',              j+'butterchurn@2.6.7/lib/butterchurn.min.js');
+      await loadScriptPair(u+'butterchurn@2.6.7/lib/butterchurnExtraImages.min.js',   j+'butterchurn@2.6.7/lib/butterchurnExtraImages.min.js');
+      await loadScriptPair(u+'butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js', j+'butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js');
+      window._libsReady = true;
+    }catch(e){
+      console.warn('Preset libraries failed to load', e);
+      window._libsReady = false;
+    }
+  })();
+  </script>
 
   <script>
   // ===== helpers =====
@@ -99,13 +119,12 @@
   function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
   const pad = s => (s<10?'0':'')+s;
   const fmt = t => { if(!isFinite(t)) return '0:00'; const m=(t/60)|0, s=(t%60)|0; return m+':'+pad(s); };
-  function log(...a){ console.log('[viz]', ...a); }
+  const log = (...a)=>console.log('[viz1]', ...a);
 
   // ===== DOM refs =====
   const wrap   = document.getElementById('vizwrap');
   const canvas = document.getElementById('viz');
   const starter= document.getElementById('starter');
-  const startBtn= document.getElementById('startBtn');
   const audio  = document.getElementById('player');
   const btnPlay= document.getElementById('play');
   const btnNext= document.getElementById('next');
@@ -115,8 +134,8 @@
   const tDur   = document.getElementById('dur');
 
   // ===== state =====
-  let ctx, src, viz, BC, PRESET_DICT, PRESET_NAMES;
-  let keys = [], index = 0, timer = null;
+  let ctx, src, viz, PRESET_DICT, PRESET_NAMES;
+  let keys = [], index = 0, timer = null, started=false;
 
   function size(){
     const r = wrap.getBoundingClientRect();
@@ -124,18 +143,18 @@
     if (viz) viz.setRendererSize(r.width, r.height);
   }
 
-  // Sequence: #11, #21, #22 + next 8 (deduped)
+  // Build order: #11, #21, #22 + next 8 names from the list, skipping dups
   function buildSequence(){
     const names = PRESET_NAMES;
-    const by1 = n => names[n-1];
+    const by1 = n => names[n-1];                   // convert to zero-based
     const first = [by1(11), by1(21), by1(22)].filter(Boolean);
     const extras = names.filter(n => !first.includes(n)).slice(0, 8);
     const seq = first.concat(extras);
-    log('Preset count:', names.length, '| start picks:', first, '| extras:', extras.length);
+    log('Preset count:', names.length, '| start picks:', first, '| extra picks:', extras.length);
     return seq.length ? seq : names;
   }
 
-  // **No UI flash here**
+  // No UI flash here
   function loadByName(name, blend=1.4){
     const p = PRESET_DICT[name];
     if (!p) { log('Missing preset:', name); return; }
@@ -153,4 +172,113 @@
   function reschedule(){
     if (timer) clearInterval(timer);
     const interval = Math.round(MS_PER_BAR * 64);
-    timer = setInter
+    timer = setInterval(()=> loadByIndex(index+1, 1.6), interval);
+    log('Auto-change every', interval, 'ms');
+  }
+
+  function buildVizInput(c, mediaSource){
+    mediaSource.connect(c.destination);            // speakers (clean)
+    const gain = c.createGain(); gain.gain.value = +rVol.value;
+    mediaSource.connect(gain);                     // visuals branch with sensitivity
+    return gain;
+  }
+
+  async function bootCore(){
+    if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return false; }
+    // wait (up to ~8s) for libs
+    await new Promise(res=>{
+      let t=0; const h=setInterval(()=>{ if (window._libsReady){ clearInterval(h); res(); } if (++t>80){ clearInterval(h); res(); } }, 100);
+    });
+    const BC = getBC();
+    if (!BC || !window.butterchurnPresets){ alert('Preset libraries failed to load.'); return false; }
+
+    const LIB = (window.butterchurnPresets.default || window.butterchurnPresets);
+    PRESET_DICT = LIB.getPresets();
+    PRESET_NAMES = Object.keys(PRESET_DICT);
+    log('Core presets available:', PRESET_NAMES.length);
+
+    ctx = new (window.AudioContext || window.webkitAudioContext)({latencyHint:'interactive'});
+    src = ctx.createMediaElementSource(audio);
+
+    const input = buildVizInput(ctx, src);
+    viz = (window.butterchurn.createVisualizer ? window.butterchurn : window.butterchurn.default)
+            .createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
+    viz.connectAudio(input);
+
+    keys = buildSequence();
+    // don't load presets or start render loop until audio is playing
+    size(); window.addEventListener('resize', size, {passive:true});
+    return true;
+  }
+
+  // ===== start + controls (robust, no popups) =====
+  function showErr(e){ console.warn('Start/play warning:', e && e.message ? e.message : e); }
+
+  async function startPlayback(){
+    try{
+      if (!ctx){
+        const ok = await bootCore();
+        if (!ok) return;
+      }
+      if (ctx.state === 'suspended') await ctx.resume();
+      if (audio.paused){ try{ await audio.play(); }catch(e){ showErr(e); } }
+
+      if (!started){
+        started=true;
+        // start visuals only after audio begins
+        loadByIndex(0, 0);
+        (function loop(){ if (viz) viz.render(); requestAnimationFrame(loop); })();
+        reschedule();
+
+        // progress + restart logic
+        let lastT=0;
+        audio.addEventListener('timeupdate', ()=>{
+          const t = audio.currentTime||0;
+          if (audio.duration){
+            rSeek.value = t / audio.duration;
+            tTime.textContent = fmt(t);
+            tDur.textContent  = fmt(audio.duration);
+          }
+          if (t<1 && lastT>5){ index=0; keys=buildSequence(); loadByIndex(0,0); reschedule(); }
+          lastT = t;
+        }, {passive:true});
+      }
+
+      document.getElementById('starter').style.display='none';
+      btnPlay.textContent='⏸';
+    }catch(e){ showErr(e); }
+  }
+
+  // Global starter so inline onclick can reach it
+  window._vizStart = async function(){ return startPlayback(); };
+
+  // Start on ANY pointer (helps inside iframes/Safari)
+  document.addEventListener('pointerdown', ()=>{ 
+    if (!ctx || (audio && audio.paused)) window._vizStart(); 
+  }, { once: true, passive: true });
+
+  // Also bind to canvas specifically (some builders overlay the first click)
+  canvas.addEventListener('pointerdown', ()=>{ 
+    if (!ctx || (audio && audio.paused)) window._vizStart(); 
+  }, { passive: true });
+
+  // Extra listeners
+  document.getElementById('startBtn').addEventListener('click', startPlayback);
+  document.getElementById('starter').addEventListener('click', (e)=>{ if (e.target.id==='starter') startPlayback(); });
+  canvas.addEventListener('click', startPlayback);
+  document.addEventListener('keydown', (e)=>{ if (e.code==='Space'||e.key==='Enter') startPlayback(); });
+
+  btnPlay.addEventListener('click', async ()=>{
+    try{
+      if (!ctx) await startPlayback();
+      if (audio.paused){ try{ await audio.play(); }catch(e){} btnPlay.textContent='⏸'; }
+      else { audio.pause(); btnPlay.textContent='▶'; }
+    }catch(e){ showErr(e); }
+  });
+
+  btnNext.addEventListener('click', ()=> loadByIndex(index+1, 1.2));
+  rSeek.addEventListener('input', e=>{ if (audio.duration) audio.currentTime = e.target.value * audio.duration; });
+  rVol.addEventListener('input', e=>{ audio.volume = +e.target.value; });
+  </script>
+</body>
+</html>
