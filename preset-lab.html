@@ -1,0 +1,432 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Butterchurn Preset Lab</title>
+<style>
+  :root{
+    --ui-bg: rgba(255,255,255,.88);
+    --ui-fg: #3e3e3e;
+    --accent: rgba(140,195,120,.38);
+    --font: 400 13px/20px Clarkson,"Proxima Nova","Open Sans","Helvetica Neue",Helvetica,Arial,sans-serif;
+  }
+  html,body{margin:0;height:100%;background:#000;color:#eaeaea;font:var(--font)}
+  #layout{display:grid;grid-template-columns:340px 1fr;grid-template-rows:auto 1fr auto;min-height:100vh}
+  header{grid-column:1/-1;padding:10px 14px;background:#0b0b0b;border-bottom:1px solid #1e1e1e;display:flex;gap:12px;align-items:center}
+  header h1{margin:0;font-size:14px;font-weight:600;color:#fff;letter-spacing:.3px}
+  #left{grid-row:2 / span 1; grid-column:1; background:#0f0f0f; border-right:1px solid #1e1e1e; padding:12px; display:flex; flex-direction:column; gap:12px; overflow:auto}
+  #right{grid-row:2 / span 1; grid-column:2; position:relative; background:#000}
+  #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
+  #probe{position:absolute;left:-9999px;top:-9999px;width:64px;height:64px}
+
+  fieldset{border:1px solid #1e1e1e;border-radius:10px;padding:10px}
+  legend{padding:0 6px;color:#cfcfcf}
+  label{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0}
+  input[type="text"], input[type="number"], select{
+    width:100%; padding:8px 10px; border-radius:8px; border:1px solid #242424; background:#121212; color:#e5e5e5; outline:none;
+  }
+  input[type="range"]{width:100%}
+  button{all:unset;cursor:pointer;background:#1b1b1b;border:1px solid #2a2a2a;padding:8px 10px;border-radius:10px;text-align:center}
+  button:hover{background:#242424}
+  .row{display:grid;grid-template-columns:1fr 1fr; gap:8px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr; gap:8px}
+  .pill{background:#151515;border:1px solid #2a2a2a;padding:4px 8px;border-radius:9999px;font-size:12px}
+  .muted{opacity:.8}
+  #timeline{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
+  .cue{display:flex;align-items:center;gap:8px;background:#0b0b0b;border:1px solid #1e1e1e;border-radius:8px;padding:6px}
+  .cue .name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .danger{color:#ff7b7b}
+  footer{grid-column:1/-1;padding:10px;background:#0b0b0b;border-top:1px solid #1e1e1e;display:flex;gap:10px;align-items:center}
+  textarea{width:100%;height:140px;background:#0d0d0d;color:#dcdcdc;border:1px solid #1e1e1e;border-radius:8px;padding:8px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace}
+  .badge{padding:2px 6px;border:1px solid #2a2a2a;border-radius:999px;font-size:11px;background:#111}
+  .playbar{display:flex;align-items:center;gap:8px}
+  .playbtn{width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; border-radius:9999px; background:var(--accent); color:#fff; border:none}
+</style>
+</head>
+<body>
+<div id="layout">
+  <header>
+    <h1>Butterchurn Preset Lab</h1>
+    <span class="badge">BPM-grid</span>
+    <span class="badge">Cues → Export Code</span>
+  </header>
+
+  <aside id="left">
+    <fieldset>
+      <legend>Audio</legend>
+      <div class="row">
+        <label>File <input id="audioSrc" type="text" placeholder="track3.mp3" value="track3.mp3"/></label>
+        <label>BPM <input id="bpm" type="number" min="60" max="200" step="1" value="134"/></label>
+      </div>
+      <div class="playbar">
+        <button id="play" class="playbtn" title="Play/Pause">▶</button>
+        <span id="cur" class="muted">0:00</span>
+        <input id="seek" type="range" min="0" max="1" step="0.001" value="0" style="flex:1"/>
+        <span id="dur" class="muted">0:00</span>
+      </div>
+      <div class="row">
+        <label>Volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.9"/></label>
+        <label>Current bar <input id="bar" type="text" readonly/></label>
+      </div>
+      <div class="row">
+        <button id="reloadAudio">Load audio</button>
+        <button id="snap0">Snap to bar 1</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Preset & Style</legend>
+      <label>Preset <select id="presetSelect"><option>Loading…</option></select></label>
+      <div class="row3">
+        <label>Gamma <input id="gamma" type="range" min="0.8" max="1.6" step="0.01" value="1.20"/></label>
+        <label>Decay <input id="decay" type="range" min="0.96" max="0.996" step="0.001" value="0.985"/></label>
+        <label>Warp <input id="warp" type="range" min="0.0" max="0.05" step="0.001" value="0.014"/></label>
+      </div>
+      <div class="row3">
+        <label>Tint R <input id="tR" type="range" min="0" max="1" step="0.01" value="1.00"/></label>
+        <label>Tint G <input id="tG" type="range" min="0" max="1" step="0.01" value="1.00"/></label>
+        <label>Tint B <input id="tB" type="range" min="0" max="1" step="0.01" value="1.00"/></label>
+      </div>
+      <div class="row">
+        <label>Micro morph (bars) <input id="micro" type="number" min="2" max="16" step="2" value="4"/></label>
+        <label>Blend (s) <input id="blendSec" type="number" min="0" max="6" step="0.1" value="1.2"/></label>
+      </div>
+      <div class="row">
+        <button id="applyNow">Apply to Live</button>
+        <button id="previewNext">Preview as Next</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Timeline (bar-based cues)</legend>
+      <div class="row">
+        <label>Add at bar <input id="cueBar" type="number" min="1" step="1" value="1"/></label>
+        <label>Blend (s) <input id="cueBlend" type="number" min="0" max="6" step="0.1" value="1.6"/></label>
+      </div>
+      <div class="row">
+        <button id="addCue">+ Add cue for selected preset</button>
+        <button id="clearCues" class="danger">Clear all</button>
+      </div>
+      <div id="timeline"></div>
+    </fieldset>
+  </aside>
+
+  <main id="right">
+    <canvas id="viz"></canvas>
+    <canvas id="probe" width="64" height="64" aria-hidden="true"></canvas>
+    <audio id="player" preload="auto" playsinline crossorigin="anonymous"></audio>
+  </main>
+
+  <footer>
+    <button id="export">Export Code</button>
+    <span class="muted">Copy the code below into your production visualizer.</span>
+  </footer>
+</div>
+
+<section style="padding:10px;background:#0b0b0b;border-top:1px solid #1e1e1e">
+  <textarea id="out" spellcheck="false" readonly>// exported code will appear here…</textarea>
+</section>
+
+<!-- Libraries with CDN fallback -->
+<script>
+function loadScriptPair(primary, fallback){
+  return new Promise((resolve,reject)=>{
+    const s=document.createElement('script'); s.src=primary; s.async=false;
+    s.onload=resolve;
+    s.onerror=()=>{ const f=document.createElement('script'); f.src=fallback; f.async=false; f.onload=resolve; f.onerror=()=>reject(new Error('CDN fail '+primary)); document.head.appendChild(f); };
+    document.head.appendChild(s);
+  });
+}
+(async function libs(){
+  const u='https://unpkg.com/', j='https://cdn.jsdelivr.net/npm/';
+  await loadScriptPair(u+'butterchurn@2.6.7/lib/butterchurn.min.js',              j+'butterchurn@2.6.7/lib/butterchurn.min.js');
+  await loadScriptPair(u+'butterchurn@2.6.7/lib/butterchurnExtraImages.min.js',   j+'butterchurn@2.6.7/lib/butterchurnExtraImages.min.js');
+  await loadScriptPair(u+'butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js',        j+'butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js');
+  await loadScriptPair(u+'butterchurn-presets@2.4.7/lib/butterchurnPresetsNonMinimal.min.js', j+'butterchurn-presets@2.4.7/lib/butterchurnPresetsNonMinimal.min.js');
+  await loadScriptPair(u+'butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js',   j+'butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js');
+  await loadScriptPair(u+'butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra2.min.js',  j+'butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra2.min.js');
+  window._libsReady = true;
+})();
+</script>
+
+<script>
+const wrap = document.getElementById('right');
+const canvas = document.getElementById('viz');
+const probe = document.getElementById('probe');
+const audio = document.getElementById('player');
+
+const selPreset = document.getElementById('presetSelect');
+const gamma = document.getElementById('gamma');
+const decay = document.getElementById('decay');
+const warp = document.getElementById('warp');
+const tR = document.getElementById('tR'), tG = document.getElementById('tG'), tB = document.getElementById('tB');
+const micro = document.getElementById('micro');
+const blendSec = document.getElementById('blendSec');
+
+const bpmEl = document.getElementById('bpm');
+const audioSrc = document.getElementById('audioSrc');
+const curEl = document.getElementById('cur'), durEl = document.getElementById('dur'), seekEl = document.getElementById('seek');
+const volEl = document.getElementById('vol'), barEl = document.getElementById('bar');
+
+const playBtn = document.getElementById('play');
+const reloadBtn = document.getElementById('reloadAudio');
+const snap0Btn = document.getElementById('snap0');
+
+const addCueBtn = document.getElementById('addCue'), clearCuesBtn = document.getElementById('clearCues');
+const cueBar = document.getElementById('cueBar'), cueBlend = document.getElementById('cueBlend');
+const timeline = document.getElementById('timeline');
+const exportBtn = document.getElementById('export'), out = document.getElementById('out');
+
+let ctx, src, viz, PRESETS={dict:{}, names:[]}, started=false;
+let cues=[]; // {bar, name, blendSec}
+let currentPresetName=null;
+let microTimer=null, cueTimer=null;
+
+function fmt(t){ if(!isFinite(t)) return '0:00'; const m=(t/60|0), s=t%60|0; return m+':'+(s<10?'0':'')+s; }
+function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; viz && viz.setRendererSize(r.width,r.height); }
+function MS_PER_BAR(){ const bpm = parseFloat(bpmEl.value||120); return (60000/bpm)*4; }
+function currentBar(){ return ((audio.currentTime*1000)/MS_PER_BAR())+1; } // 1-based
+function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
+
+function mergePresetPacks(){
+  const libs=[];
+  if (window.butterchurnPresets) libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
+  if (window.butterchurnPresetsNonMinimal) libs.push((butterchurnPresetsNonMinimal.default||butterchurnPresetsNonMinimal).getPresets());
+  if (window.butterchurnPresetsExtra) libs.push((butterchurnPresetsExtra.default||butterchurnPresetsExtra).getPresets());
+  if (window.butterchurnPresetsExtra2) libs.push((butterchurnPresetsExtra2.default||butterchurnPresetsExtra2).getPresets());
+  const dict=Object.assign({},...libs), names=Object.keys(dict);
+  return {dict,names};
+}
+
+function fillPresetSelect(){
+  selPreset.innerHTML='';
+  PRESETS.names.sort().forEach(n=>{
+    const o=document.createElement('option'); o.value=n; o.textContent=n; selPreset.appendChild(o);
+  });
+  // pick a nice default
+  const pick = PRESETS.names.find(n=>/kaleid|tunnel|vortex|reaction|nebula|fluid|flow|spiral/i.test(n)) || PRESETS.names[0];
+  selPreset.value = pick;
+}
+
+function mutate(base){
+  const p = JSON.parse(JSON.stringify(base));
+  p.ob_a=0; p.ib_a=0;
+  p.gamma = parseFloat(gamma.value);
+  p.decay = parseFloat(decay.value);
+  // light warp via per_frame
+  const w = parseFloat(warp.value);
+  p.per_frame = (p.per_frame||"") + `warp=${w.toFixed(4)};`;
+  // tint
+  p.shapecolorr=parseFloat(tR.value);
+  p.shapecolorg=parseFloat(tG.value);
+  p.shapecolorb=parseFloat(tB.value);
+  return p;
+}
+
+function loadPresetByName(name, blendSeconds){
+  const base = PRESETS.dict[name]; if(!base) return;
+  currentPresetName = name;
+  viz.loadPreset(mutate(base), Math.max(0, blendSeconds||0));
+  // (Optional) basic white-out guard: if avg brightness > .97 for ~6s, skip
+  armWhiteWatch(name);
+  console.log('Loaded:', name);
+}
+
+function scheduleMicro(){
+  if (microTimer) clearInterval(microTimer);
+  const span = Math.max(2, parseInt(micro.value||4,10));
+  microTimer = setInterval(()=>{
+    if (!currentPresetName) return;
+    // reload same preset with small blend to morph parameters smoothly
+    loadPresetByName(currentPresetName, 0.6);
+  }, MS_PER_BAR()*span);
+}
+
+function scheduleCues(){
+  if (cueTimer) clearInterval(cueTimer);
+  const tick = 100; // ms
+  cueTimer = setInterval(()=>{
+    const tms = audio.currentTime*1000;
+    const due = cues.filter(c => !c._done && tms >= (c.bar-1)*MS_PER_BAR()-50);
+    if (due.length){
+      // execute in order of bar
+      due.sort((a,b)=>a.bar-b.bar).forEach(c=>{
+        c._done=true;
+        loadPresetByName(c.name, c.blendSec);
+      });
+      renderTimeline();
+    }
+    // update bar readout
+    barEl.value = Math.max(1, Math.floor(currentBar()));
+  }, tick);
+}
+
+function renderTimeline(){
+  timeline.innerHTML='';
+  if (!cues.length){ const d=document.createElement('div'); d.className='muted'; d.textContent='No cues yet.'; timeline.appendChild(d); return; }
+  cues.sort((a,b)=>a.bar-b.bar);
+  cues.forEach((c,idx)=>{
+    const row=document.createElement('div'); row.className='cue';
+    const left=document.createElement('div'); left.className='name'; left.textContent=`Bar ${c.bar} • ${c.name}`;
+    const mid=document.createElement('div'); mid.textContent=`blend ${c.blendSec}s`; mid.className='muted';
+    const del=document.createElement('button'); del.textContent='✕'; del.title='Remove';
+    del.onclick=()=>{ cues.splice(idx,1); scheduleCues(); renderTimeline(); };
+    row.appendChild(left); row.appendChild(mid); row.appendChild(del);
+    timeline.appendChild(row);
+  });
+}
+
+function exportCode(){
+  const style = {
+    gamma:+gamma.value, decay:+decay.value, warp:+warp.value,
+    tint:{ r:+tR.value, g:+tG.value, b:+tB.value },
+    microBars: parseInt(micro.value,10)
+  };
+  const schedule = cues.sort((a,b)=>a.bar-b.bar).map(c=>({ bar:c.bar, name:c.name, blendSec:c.blendSec }));
+  const code =
+`// ====== Generated with Preset Lab ======
+const SCHEDULE = ${JSON.stringify(schedule, null, 2)};
+
+// Style mutator — apply this to each loaded preset
+function applyStyle(base){
+  const p = JSON.parse(JSON.stringify(base));
+  p.ob_a=0; p.ib_a=0;
+  p.gamma = ${style.gamma};
+  p.decay = ${style.decay};
+  p.per_frame = (p.per_frame||"") + "warp=${style.warp.toFixed(4)};";
+  p.shapecolorr=${style.tint.r};
+  p.shapecolorg=${style.tint.g};
+  p.shapecolorb=${style.tint.b};
+  return p;
+}
+
+// Micro morph cadence (bars)
+const MICRO_BARS = ${style.microBars};
+
+// Example loader usage:
+// 1) setInterval every MICRO_BARS to reload current preset with small blend
+// 2) at each cue.bar, load preset by name with cue.blendSec
+`;
+  out.value = code;
+}
+
+/* ---------- boot + start ---------- */
+function getBC(){
+  const bc=window.butterchurn;
+  return bc && (typeof bc.createVisualizer==='function' ? bc : bc.default);
+}
+function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
+
+async function boot(){
+  // wait for libs (up to ~8s)
+  await new Promise(res=>{
+    let t=0; const h=setInterval(()=>{ if (window._libsReady){ clearInterval(h); res(); } if (++t>80){ clearInterval(h); res(); } }, 100);
+  });
+  if (!webglOK()){ alert('WebGL not available. Enable hardware acceleration.'); return false; }
+  const BC=getBC(); if (!BC){ alert('Butterchurn failed to load.'); return false; }
+
+  const merged = (function(){
+    const m=mergePresetPacks(); PRESETS=m; return m;
+  })();
+
+  // UI presets
+  fillPresetSelect();
+
+  // audio routing
+  ctx = new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
+  src = ctx.createMediaElementSource(audio);
+  const g = ctx.createGain(); g.gain.value=+volEl.value;
+  src.connect(ctx.destination); src.connect(g);
+
+  viz = BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
+  viz.connectAudio(g);
+
+  // sizing + render
+  size(); addEventListener('resize', size, {passive:true});
+  (function loop(){ viz && viz.render(); requestAnimationFrame(loop); })();
+
+  // audio bindings
+  audio.src = audioSrc.value.trim();
+  volEl.oninput = e=> audio.volume=+e.target.value;
+  seekEl.oninput = e=>{ if (audio.duration) audio.currentTime = e.target.value*audio.duration; };
+  audio.addEventListener('timeupdate', ()=>{
+    curEl.textContent = fmt(audio.currentTime||0);
+    if (audio.duration){ durEl.textContent = fmt(audio.duration); seekEl.value = (audio.currentTime/audio.duration); }
+    barEl.value = Math.max(1, Math.floor(currentBar()));
+  });
+
+  playBtn.onclick = async ()=>{
+    if (!started){
+      if (ctx.state==='suspended') await ctx.resume();
+      await audio.play();
+      started=true;
+      // initial load
+      loadPresetByName(selPreset.value, 0.0);
+      scheduleMicro();
+      scheduleCues();
+      playBtn.textContent='⏸';
+    }else{
+      if (audio.paused){ await audio.play(); playBtn.textContent='⏸'; }
+      else { audio.pause(); playBtn.textContent='▶'; }
+    }
+  };
+
+  reloadBtn.onclick = ()=>{
+    audio.src = audioSrc.value.trim();
+    started=false; playBtn.textContent='▶';
+    cues.forEach(c=> delete c._done);
+  };
+  snap0Btn.onclick = ()=>{ audio.currentTime = 0; };
+
+  document.getElementById('applyNow').onclick = ()=> loadPresetByName(selPreset.value, +blendSec.value);
+  document.getElementById('previewNext').onclick = ()=> { currentPresetName = selPreset.value; };
+
+  addCueBtn.onclick = ()=>{
+    const c = { bar: Math.max(1, parseInt(cueBar.value||1,10)), name: selPreset.value, blendSec: Math.max(0, +cueBlend.value||0) };
+    cues.push(c); renderTimeline(); scheduleCues();
+  };
+  clearCuesBtn.onclick = ()=>{ cues.length=0; renderTimeline(); scheduleCues(); };
+
+  exportBtn.onclick = exportCode;
+
+  return true;
+}
+
+/* white-out watchdog (session only skip) */
+let whiteWatch=null;
+function armWhiteWatch(presetName){
+  if (whiteWatch) { clearInterval(whiteWatch); whiteWatch=null; }
+  const pctx = probe.getContext('2d', {willReadFrequently:true}); if(!pctx) return;
+  let brightCount=0;
+  whiteWatch=setInterval(()=>{
+    try{
+      pctx.drawImage(canvas, 0,0, probe.width, probe.height);
+      const {data} = pctx.getImageData(0,0, probe.width, probe.height);
+      let sum=0, n=0;
+      for (let i=0;i<data.length;i+=4){
+        const r=data[i]/255, g=data[i+1]/255, b=data[i+2]/255;
+        sum += 0.2126*r + 0.7152*g + 0.0722*b; n++;
+      }
+      const avg = sum/n;
+      if (avg > 0.97) brightCount++; else brightCount=0;
+      if (brightCount >= 3){
+        console.log('White-out detected, skipping:', presetName);
+        // pick next visible preset immediately
+        const names = PRESETS.names;
+        const i = Math.max(0, names.indexOf(presetName));
+        const next = names[(i+1)%names.length];
+        loadPresetByName(next, 1.2);
+        clearInterval(whiteWatch); whiteWatch=null;
+      }
+    }catch(e){ clearInterval(whiteWatch); whiteWatch=null; }
+  }, 2000);
+}
+
+/* kick off */
+(async function(){
+  try{ await boot(); }catch(e){ console.error(e); alert('Init failed. See console.'); }
+})();
+</script>
+</body>
+</html>
