@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Butterchurn Preset Lab</title>
+<title>Butterchurn Preset Lab v2</title>
 <style>
   :root{
     --ui-bg: rgba(255,255,255,.88);
@@ -31,7 +31,6 @@
   button:hover{background:#242424}
   .row{display:grid;grid-template-columns:1fr 1fr; gap:8px}
   .row3{display:grid;grid-template-columns:1fr 1fr 1fr; gap:8px}
-  .pill{background:#151515;border:1px solid #2a2a2a;padding:4px 8px;border-radius:9999px;font-size:12px}
   .muted{opacity:.8}
   #timeline{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
   .cue{display:flex;align-items:center;gap:8px;background:#0b0b0b;border:1px solid #1e1e1e;border-radius:8px;padding:6px}
@@ -47,9 +46,10 @@
 <body>
 <div id="layout">
   <header>
-    <h1>Butterchurn Preset Lab</h1>
-    <span class="badge">BPM-grid</span>
-    <span class="badge">Cues → Export Code</span>
+    <h1>Butterchurn Preset Lab v2</h1>
+    <span class="badge">Live style</span>
+    <span class="badge">Bar grid + Sequencer</span>
+    <span class="badge">Export</span>
   </header>
 
   <aside id="left">
@@ -110,6 +110,15 @@
       </div>
       <div id="timeline"></div>
     </fieldset>
+
+    <fieldset>
+      <legend>Quick Sequencer (up to 5)</legend>
+      <div id="seqRows" style="display:grid;gap:6px;"></div>
+      <div class="row">
+        <button id="seqApply">Build cues from sequence</button>
+        <button id="seqClear">Clear sequence</button>
+      </div>
+    </fieldset>
   </aside>
 
   <main id="right">
@@ -151,6 +160,7 @@ function loadScriptPair(primary, fallback){
 </script>
 
 <script>
+/* ---------- DOM ---------- */
 const wrap = document.getElementById('right');
 const canvas = document.getElementById('viz');
 const probe = document.getElementById('probe');
@@ -178,11 +188,19 @@ const cueBar = document.getElementById('cueBar'), cueBlend = document.getElement
 const timeline = document.getElementById('timeline');
 const exportBtn = document.getElementById('export'), out = document.getElementById('out');
 
+const seqRows = document.getElementById('seqRows');
+const seqApply = document.getElementById('seqApply');
+const seqClear = document.getElementById('seqClear');
+
+/* ---------- state ---------- */
 let ctx, src, viz, PRESETS={dict:{}, names:[]}, started=false;
-let cues=[]; // {bar, name, blendSec}
+let cues=[]; // {bar, name, blendSec, _done?}
 let currentPresetName=null;
 let microTimer=null, cueTimer=null;
+let whiteWatch=null;
 
+/* ---------- utils ---------- */
+function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 function fmt(t){ if(!isFinite(t)) return '0:00'; const m=(t/60|0), s=t%60|0; return m+':'+(s<10?'0':'')+s; }
 function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; viz && viz.setRendererSize(r.width,r.height); }
 function MS_PER_BAR(){ const bpm = parseFloat(bpmEl.value||120); return (60000/bpm)*4; }
@@ -199,28 +217,45 @@ function mergePresetPacks(){
   return {dict,names};
 }
 
+/* ---------- presets UI ---------- */
 function fillPresetSelect(){
   selPreset.innerHTML='';
   PRESETS.names.sort().forEach(n=>{
     const o=document.createElement('option'); o.value=n; o.textContent=n; selPreset.appendChild(o);
   });
-  // pick a nice default
   const pick = PRESETS.names.find(n=>/kaleid|tunnel|vortex|reaction|nebula|fluid|flow|spiral/i.test(n)) || PRESETS.names[0];
   selPreset.value = pick;
 }
 
+/* ---------- style mutate (LIVE) ---------- */
 function mutate(base){
   const p = JSON.parse(JSON.stringify(base));
-  p.ob_a=0; p.ib_a=0;
+  p.ob_a = 0; p.ib_a = 0;
   p.gamma = parseFloat(gamma.value);
   p.decay = parseFloat(decay.value);
-  // light warp via per_frame
+
   const w = parseFloat(warp.value);
-  p.per_frame = (p.per_frame||"") + `warp=${w.toFixed(4)};`;
-  // tint
-  p.shapecolorr=parseFloat(tR.value);
-  p.shapecolorg=parseFloat(tG.value);
-  p.shapecolorb=parseFloat(tB.value);
+  const warpEq =
+    `qB = 0.85*qB + 0.15*bass_att; `
+  + `zoom = zoom * (1.0 + ${w.toFixed(4)} * qB); `
+  + `rot = rot + ${Math.max(0.0003, w/10).toFixed(5)} * (qB - 0.5);`;
+  p.per_frame = (p.per_frame || "") + warpEq;
+
+  const tr = parseFloat(tR.value), tg = parseFloat(tG.value), tb = parseFloat(tB.value);
+  if (Array.isArray(p.waves)) {
+    p.waves.forEach(wv => {
+      if (typeof wv.r === 'number') wv.r = Math.max(0, Math.min(1, wv.r * tr));
+      if (typeof wv.g === 'number') wv.g = Math.max(0, Math.min(1, wv.g * tg));
+      if (typeof wv.b === 'number') wv.b = Math.max(0, Math.min(1, wv.b * tb));
+    });
+  }
+  if (Array.isArray(p.shapes)) {
+    p.shapes.forEach(sh => {
+      if (typeof sh.r === 'number') sh.r = Math.max(0, Math.min(1, sh.r * tr));
+      if (typeof sh.g === 'number') sh.g = Math.max(0, Math.min(1, sh.g * tg));
+      if (typeof sh.b === 'number') sh.b = Math.max(0, Math.min(1, sh.b * tb));
+    });
+  }
   return p;
 }
 
@@ -228,36 +263,41 @@ function loadPresetByName(name, blendSeconds){
   const base = PRESETS.dict[name]; if(!base) return;
   currentPresetName = name;
   viz.loadPreset(mutate(base), Math.max(0, blendSeconds||0));
-  // (Optional) basic white-out guard: if avg brightness > .97 for ~6s, skip
   armWhiteWatch(name);
   console.log('Loaded:', name);
 }
 
+const applyLiveDebounced = debounce(()=> {
+  if (!currentPresetName || !viz || !PRESETS.dict[currentPresetName]) return;
+  const base = PRESETS.dict[currentPresetName];
+  viz.loadPreset(mutate(base), 0.3);
+}, 120);
+[gamma, decay, warp, tR, tG, tB].forEach(el => el.addEventListener('input', applyLiveDebounced, { passive:true }));
+
+/* ---------- micro morph ---------- */
 function scheduleMicro(){
   if (microTimer) clearInterval(microTimer);
   const span = Math.max(2, parseInt(micro.value||4,10));
   microTimer = setInterval(()=>{
     if (!currentPresetName) return;
-    // reload same preset with small blend to morph parameters smoothly
     loadPresetByName(currentPresetName, 0.6);
   }, MS_PER_BAR()*span);
 }
 
+/* ---------- cues ---------- */
 function scheduleCues(){
   if (cueTimer) clearInterval(cueTimer);
-  const tick = 100; // ms
+  const tick = 100;
   cueTimer = setInterval(()=>{
     const tms = audio.currentTime*1000;
     const due = cues.filter(c => !c._done && tms >= (c.bar-1)*MS_PER_BAR()-50);
     if (due.length){
-      // execute in order of bar
       due.sort((a,b)=>a.bar-b.bar).forEach(c=>{
         c._done=true;
         loadPresetByName(c.name, c.blendSec);
       });
       renderTimeline();
     }
-    // update bar readout
     barEl.value = Math.max(1, Math.floor(currentBar()));
   }, tick);
 }
@@ -271,52 +311,149 @@ function renderTimeline(){
     const left=document.createElement('div'); left.className='name'; left.textContent=`Bar ${c.bar} • ${c.name}`;
     const mid=document.createElement('div'); mid.textContent=`blend ${c.blendSec}s`; mid.className='muted';
     const del=document.createElement('button'); del.textContent='✕'; del.title='Remove';
-    del.onclick=()=>{ cues.splice(idx,1); scheduleCues(); renderTimeline(); };
+    del.onclick=()=>{ cues.splice(idx,1); renderTimeline(); scheduleCues(); };
     row.appendChild(left); row.appendChild(mid); row.appendChild(del);
     timeline.appendChild(row);
   });
 }
 
+/* ---------- export ---------- */
 function exportCode(){
   const style = {
     gamma:+gamma.value, decay:+decay.value, warp:+warp.value,
     tint:{ r:+tR.value, g:+tG.value, b:+tB.value },
     microBars: parseInt(micro.value,10)
   };
-  const schedule = cues.sort((a,b)=>a.bar-b.bar).map(c=>({ bar:c.bar, name:c.name, blendSec:c.blendSec }));
+  const schedule = cues.slice().sort((a,b)=>a.bar-b.bar).map(c=>({ bar:c.bar, name:c.name, blendSec:c.blendSec }));
   const code =
-`// ====== Generated with Preset Lab ======
+`// ====== Generated with Preset Lab v2 ======
 const SCHEDULE = ${JSON.stringify(schedule, null, 2)};
 
-// Style mutator — apply this to each loaded preset
+// Style mutator — apply to each loaded preset
 function applyStyle(base){
   const p = JSON.parse(JSON.stringify(base));
   p.ob_a=0; p.ib_a=0;
   p.gamma = ${style.gamma};
   p.decay = ${style.decay};
-  p.per_frame = (p.per_frame||"") + "warp=${style.warp.toFixed(4)};";
+  p.per_frame = (p.per_frame||"") + "qB=0.85*qB+0.15*bass_att; zoom=zoom*(1.0+${style.warp.toFixed(4)}*qB); rot=rot+${Math.max(0.0003, style.warp/10).toFixed(5)}*(qB-0.5);";
   p.shapecolorr=${style.tint.r};
   p.shapecolorg=${style.tint.g};
   p.shapecolorb=${style.tint.b};
+  if (Array.isArray(p.waves)) p.waves.forEach(w=>{ if(typeof w.r==='number')w.r*=${style.tint.r}; if(typeof w.g==='number')w.g*=${style.tint.g}; if(typeof w.b==='number')w.b*=${style.tint.b}; });
+  if (Array.isArray(p.shapes)) p.shapes.forEach(s=>{ if(typeof s.r==='number')s.r*=${style.tint.r}; if(typeof s.g==='number')s.g*=${style.tint.g}; if(typeof s.b==='number')s.b*=${style.tint.b}; });
   return p;
 }
-
-// Micro morph cadence (bars)
 const MICRO_BARS = ${style.microBars};
-
-// Example loader usage:
-// 1) setInterval every MICRO_BARS to reload current preset with small blend
-// 2) at each cue.bar, load preset by name with cue.blendSec
 `;
   out.value = code;
 }
 
-/* ---------- boot + start ---------- */
+/* ---------- sequencer UI (5 steps) ---------- */
+function buildSequencerUI(){
+  seqRows.innerHTML='';
+  const barOpts = [16,32,48,64];
+
+  // Row 1: Launch preset
+  const r1 = document.createElement('div');
+  r1.innerHTML = `
+    <div class="row" style="grid-template-columns: 1fr;">
+      <label>Launch preset
+        <select class="seq-preset"></select>
+      </label>
+    </div>`;
+  seqRows.appendChild(r1);
+
+  // Rows 2..5
+  for (let i=2;i<=5;i++){
+    const row = document.createElement('div');
+    row.className='row';
+    row.innerHTML = `
+      <label>After
+        <select class="seq-bars">
+          ${barOpts.map(n=>`<option value="${n}">${n} bars</option>`).join('')}
+        </select>
+      </label>
+      <label>→ Preset
+        <select class="seq-preset"></select>
+      </label>`;
+    seqRows.appendChild(row);
+  }
+
+  // fill every .seq-preset with the preset list
+  const fill = (sel)=>{
+    sel.innerHTML='';
+    PRESETS.names.sort().forEach(n=>{
+      const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o);
+    });
+  };
+  seqRows.querySelectorAll('.seq-preset').forEach(fill);
+}
+
+function applySequencerToCues(){
+  const rows = Array.from(seqRows.children);
+  if (!rows.length) return;
+  const launchPreset = rows[0].querySelector('.seq-preset').value;
+  const blendDefault = parseFloat(cueBlend.value || 1.6);
+
+  const seq = [{ bar: 1, name: launchPreset, blendSec: 0.0 }];
+  let curBar = 1;
+  for (let i=1;i<rows.length;i++){
+    const barsSel = rows[i].querySelector('.seq-bars');
+    const presetSel = rows[i].querySelector('.seq-preset');
+    if (!barsSel || !presetSel) continue;
+    const inc = parseInt(barsSel.value, 10);
+    const name = presetSel.value;
+    if (!Number.isFinite(inc) || !name) continue;
+    curBar += inc;
+    seq.push({ bar: curBar, name, blendSec: blendDefault });
+  }
+
+  cues = seq.slice();
+  cues.forEach(c => delete c._done);
+  renderTimeline();
+  scheduleCues();
+
+  // Load launch immediately if not started
+  currentPresetName = launchPreset;
+  if (viz && PRESETS.dict[launchPreset]) viz.loadPreset(mutate(PRESETS.dict[launchPreset]), 0.0);
+}
+seqApply.addEventListener('click', applySequencerToCues);
+seqClear.addEventListener('click', ()=>{ seqRows.innerHTML=''; cues.length=0; renderTimeline(); scheduleCues(); });
+
+/* ---------- white-out watchdog (session skip) ---------- */
+function armWhiteWatch(presetName){
+  if (whiteWatch) { clearInterval(whiteWatch); whiteWatch=null; }
+  const pctx = probe.getContext('2d', {willReadFrequently:true}); if(!pctx) return;
+  let brightCount=0;
+  whiteWatch=setInterval(()=>{
+    try{
+      pctx.drawImage(canvas, 0,0, probe.width, probe.height);
+      const {data} = pctx.getImageData(0,0, probe.width, probe.height);
+      let sum=0, n=0;
+      for (let i=0;i<data.length;i+=4){
+        const r=data[i]/255, g=data[i+1]/255, b=data[i+2]/255;
+        sum += 0.2126*r + 0.7152*g + 0.0722*b; n++;
+      }
+      const avg = sum/n;
+      if (avg > 0.97) brightCount++; else brightCount=0;
+      if (brightCount >= 3){
+        console.log('White-out detected, skipping:', presetName);
+        // pick next preset immediately
+        const names = PRESETS.names;
+        const i = Math.max(0, names.indexOf(presetName));
+        const next = names[(i+1)%names.length];
+        loadPresetByName(next, 1.2);
+        clearInterval(whiteWatch); whiteWatch=null;
+      }
+    }catch(e){ clearInterval(whiteWatch); whiteWatch=null; }
+  }, 2000);
+}
+
+/* ---------- boot ---------- */
 function getBC(){
   const bc=window.butterchurn;
   return bc && (typeof bc.createVisualizer==='function' ? bc : bc.default);
 }
-function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
 
 async function boot(){
   // wait for libs (up to ~8s)
@@ -326,12 +463,9 @@ async function boot(){
   if (!webglOK()){ alert('WebGL not available. Enable hardware acceleration.'); return false; }
   const BC=getBC(); if (!BC){ alert('Butterchurn failed to load.'); return false; }
 
-  const merged = (function(){
-    const m=mergePresetPacks(); PRESETS=m; return m;
-  })();
-
-  // UI presets
+  PRESETS = mergePresetPacks();
   fillPresetSelect();
+  buildSequencerUI();
 
   // audio routing
   ctx = new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
@@ -379,7 +513,10 @@ async function boot(){
   };
   snap0Btn.onclick = ()=>{ audio.currentTime = 0; };
 
-  document.getElementById('applyNow').onclick = ()=> loadPresetByName(selPreset.value, +blendSec.value);
+  document.getElementById('applyNow').onclick = ()=>{
+    currentPresetName = selPreset.value;
+    applyLiveDebounced();
+  };
   document.getElementById('previewNext').onclick = ()=> { currentPresetName = selPreset.value; };
 
   addCueBtn.onclick = ()=>{
@@ -391,36 +528,6 @@ async function boot(){
   exportBtn.onclick = exportCode;
 
   return true;
-}
-
-/* white-out watchdog (session only skip) */
-let whiteWatch=null;
-function armWhiteWatch(presetName){
-  if (whiteWatch) { clearInterval(whiteWatch); whiteWatch=null; }
-  const pctx = probe.getContext('2d', {willReadFrequently:true}); if(!pctx) return;
-  let brightCount=0;
-  whiteWatch=setInterval(()=>{
-    try{
-      pctx.drawImage(canvas, 0,0, probe.width, probe.height);
-      const {data} = pctx.getImageData(0,0, probe.width, probe.height);
-      let sum=0, n=0;
-      for (let i=0;i<data.length;i+=4){
-        const r=data[i]/255, g=data[i+1]/255, b=data[i+2]/255;
-        sum += 0.2126*r + 0.7152*g + 0.0722*b; n++;
-      }
-      const avg = sum/n;
-      if (avg > 0.97) brightCount++; else brightCount=0;
-      if (brightCount >= 3){
-        console.log('White-out detected, skipping:', presetName);
-        // pick next visible preset immediately
-        const names = PRESETS.names;
-        const i = Math.max(0, names.indexOf(presetName));
-        const next = names[(i+1)%names.length];
-        loadPresetByName(next, 1.2);
-        clearInterval(whiteWatch); whiteWatch=null;
-      }
-    }catch(e){ clearInterval(whiteWatch); whiteWatch=null; }
-  }, 2000);
 }
 
 /* kick off */
