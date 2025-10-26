@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Butterchurn Preset Lab v3</title>
+<title>Butterchurn Preset Lab v3 (tint overlay)</title>
 <style>
   :root{
     --ui-bg: rgba(255,255,255,.88);
@@ -19,6 +19,15 @@
   #right{grid-row:2 / span 1; grid-column:2; position:relative; background:#000}
   #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
   #probe{position:absolute;left:-9999px;top:-9999px;width:64px;height:64px}
+
+  /* NEW: visible tint overlay */
+  #tintOverlay{
+    position:absolute; inset:0;
+    pointer-events:none;
+    mix-blend-mode:color;   /* apply hue to the viz */
+    opacity:0;              /* driven by Tint strength slider */
+    background:#ffffff;     /* updated live from RGB sliders */
+  }
 
   fieldset{border:1px solid #1e1e1e;border-radius:10px;padding:10px}
   legend{padding:0 6px;color:#cfcfcf}
@@ -84,9 +93,15 @@
         <label>Warp <input id="warp" type="range" min="0.0" max="0.05" step="0.001" value="0.014"/></label>
       </div>
       <div class="row3">
-        <label>Tint R <input id="tR" type="range" min="0" max="1" step="0.01" value="1.00"/></label>
-        <label>Tint G <input id="tG" type="range" min="0" max="1" step="0.01" value="1.00"/></label>
-        <label>Tint B <input id="tB" type="range" min="0" max="1" step="0.01" value="1.00"/></label>
+        <label>Tint R <input id="tR" type="range" min="0" max="2" step="0.01" value="1.00"/></label>
+        <label>Tint G <input id="tG" type="range" min="0" max="2" step="0.01" value="1.00"/></label>
+        <label>Tint B <input id="tB" type="range" min="0" max="2" step="0.01" value="1.00"/></label>
+      </div>
+      <!-- NEW: tint strength slider -->
+      <div class="row">
+        <label>Tint strength
+          <input id="tStrength" type="range" min="0" max="1" step="0.01" value="0.00"/>
+        </label>
       </div>
       <div class="row">
         <label>Micro morph (bars) <input id="micro" type="number" min="2" max="16" step="2" value="4"/></label>
@@ -146,14 +161,15 @@
         <button id="edDownload">Download JSON</button>
         <button id="edMakeCue">Cue this at current bar</button>
       </div>
-      <p class="muted" style="margin:6px 0 0">
-        Tip: start from a preset you like, tweak EQ strings, tint & trails; apply live; then download.
-      </p>
+      <p class="muted" style="margin:6px 0 0">Tip: tweak EQ strings, tint & trails; apply live; then download.</p>
     </fieldset>
   </aside>
 
   <main id="right">
     <canvas id="viz"></canvas>
+    <!-- NEW overlay sits above the canvas -->
+    <div id="tintOverlay" aria-hidden="true"></div>
+
     <canvas id="probe" width="64" height="64" aria-hidden="true"></canvas>
     <audio id="player" preload="auto" playsinline crossorigin="anonymous"></audio>
   </main>
@@ -191,6 +207,7 @@ function loadScriptPair(primary, fallback){
 /* ---------- DOM ---------- */
 const wrap = document.getElementById('right');
 const canvas = document.getElementById('viz');
+const tintOverlay = document.getElementById('tintOverlay'); // NEW
 const probe = document.getElementById('probe');
 const audio = document.getElementById('player');
 
@@ -199,6 +216,7 @@ const gamma = document.getElementById('gamma');
 const decay = document.getElementById('decay');
 const warp = document.getElementById('warp');
 const tR = document.getElementById('tR'), tG = document.getElementById('tG'), tB = document.getElementById('tB');
+const tStrength = document.getElementById('tStrength'); // NEW
 const micro = document.getElementById('micro');
 const blendSec = document.getElementById('blendSec');
 
@@ -245,6 +263,17 @@ function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; can
 function MS_PER_BAR(){ const bpm = parseFloat(bpmEl.value||120); return (60000/bpm)*4; }
 function currentBar(){ return ((audio.currentTime*1000)/MS_PER_BAR())+1; } // 1-based
 function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
+
+/* NEW: visible overlay tint from RGB + strength */
+function updateOverlayTint(){
+  let r=+tR.value, g=+tG.value, b=+tB.value;
+  const max=Math.max(r,g,b,1);
+  r=Math.min(255,Math.round(255*r/max));
+  g=Math.min(255,Math.round(255*g/max));
+  b=Math.min(255,Math.round(255*b/max));
+  tintOverlay.style.background = `rgb(${r},${g},${b})`;
+  tintOverlay.style.opacity = (+tStrength.value).toString();
+}
 
 function mergePresetPacks(){
   const libs=[];
@@ -308,7 +337,10 @@ const applyLiveDebounced = debounce(()=> {
   const base = PRESETS.dict[currentPresetName];
   viz.loadPreset(mutate(base), 0.3);
 }, 120);
-[gamma, decay, warp, tR, tG, tB].forEach(el => el.addEventListener('input', applyLiveDebounced, { passive:true }));
+[gamma, decay, warp, tR, tG, tB, tStrength].forEach(el => el.addEventListener('input', ()=>{
+  applyLiveDebounced();
+  updateOverlayTint(); // keep overlay in sync
+}, { passive:true }));
 
 /* ---------- micro morph ---------- */
 function scheduleMicro(){
@@ -357,6 +389,7 @@ function exportCode(){
   const style = {
     gamma:+gamma.value, decay:+decay.value, warp:+warp.value,
     tint:{ r:+tR.value, g:+tG.value, b:+tB.value },
+    overlay:{ strength:+tStrength.value },        // NEW
     microBars: parseInt(micro.value,10)
   };
   const schedule = cues.slice().sort((a,b)=>a.bar-b.bar).map(c=>({ bar:c.bar, name:c.name, blendSec:c.blendSec }));
@@ -375,10 +408,8 @@ function applyStyle(base){
   return p;
 }
 const MICRO_BARS = ${style.microBars};
-
-// Minimal runner idea:
-// - setInterval every MICRO_BARS to reload current with small blend
-// - poll every 100ms; when time >= cue.bar*barMs → load applyStyle(preset)
+// Note: if you want the visible overlay tint in production, add a
+// CSS mix-blend-mode:color overlay above your canvas and set its opacity to ${style.overlay.strength}.
 `;
   out.value = code;
 }
@@ -388,25 +419,17 @@ function buildSequencerUI(){
   seqRows.innerHTML='';
   const barOpts = [16,32,48,64];
 
-  // Row 1: Launch preset
   const r1 = document.createElement('div');
-  r1.innerHTML = `
-    <div class="row" style="grid-template-columns: 1fr;">
-      <label>Launch preset
-        <select class="seq-preset"></select>
-      </label>
-    </div>`;
+  r1.innerHTML = `<div class="row" style="grid-template-columns: 1fr;">
+      <label>Launch preset <select class="seq-preset"></select></label></div>`;
   seqRows.appendChild(r1);
 
-  // Rows 2..5
   for (let i=2;i<=5;i++){
     const row = document.createElement('div');
     row.className='row';
     row.innerHTML = `
       <label>After
-        <select class="seq-bars">
-          ${barOpts.map(n=>`<option value="${n}">${n} bars</option>`).join('')}
-        </select>
+        <select class="seq-bars">${barOpts.map(n=>`<option value="${n}">${n} bars</option>`).join('')}</select>
       </label>
       <label>→ Preset
         <select class="seq-preset"></select>
@@ -414,8 +437,7 @@ function buildSequencerUI(){
     seqRows.appendChild(row);
   }
 
-  // fill all .seq-preset
-  const fill = (sel)=>{
+  const fill = sel=>{
     sel.innerHTML='';
     PRESETS.names.sort().forEach(n=>{
       const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o);
@@ -447,7 +469,6 @@ function applySequencerToCues(){
   renderTimeline();
   scheduleCues();
 
-  // Load launch immediately if not started
   currentPresetName = launchPreset;
   if (viz && PRESETS.dict[launchPreset]) viz.loadPreset(mutate(PRESETS.dict[launchPreset]), 0.0);
 }
@@ -464,7 +485,6 @@ function buildDerivativeFromEditor(baseName){
   p.gamma = parseFloat(edGamma.value)||p.gamma||1.2;
   p.decay = parseFloat(edDecay.value)||p.decay||0.985;
   p.ob_a = 0; p.ib_a = 0;
-
   if (edPerFrame.value.trim()) p.per_frame = (p.per_frame||"") + "\n" + edPerFrame.value;
   if (edPerPixel.value.trim()) p.per_pixel = (p.per_pixel||"") + "\n" + edPerPixel.value;
 
@@ -491,7 +511,6 @@ edApply.addEventListener('click', ()=>{
   currentPresetName = custom.name;
   viz.loadPreset(custom, Math.max(0, +blendSec.value||0.6));
   if (typeof armWhiteWatch==='function') armWhiteWatch(custom.name);
-  // store in the dict so you can cue/export it
   PRESETS.dict[custom.name] = custom;
   if (!PRESETS.names.includes(custom.name)) PRESETS.names.push(custom.name);
   console.log('Loaded custom:', custom.name);
@@ -519,7 +538,7 @@ edMakeCue.addEventListener('click', ()=>{
   alert(`Queued "${custom.name}" at bar ${barNum}`);
 });
 
-/* ---------- white-out watchdog (session skip) ---------- */
+/* ---------- white-out watchdog ---------- */
 function armWhiteWatch(presetName){
   if (whiteWatch) { clearInterval(whiteWatch); whiteWatch=null; }
   const pctx = probe.getContext('2d', {willReadFrequently:true}); if(!pctx) return;
@@ -553,7 +572,6 @@ function getBC(){
   return bc && (typeof bc.createVisualizer==='function' ? bc : bc.default);
 }
 async function boot(){
-  // wait for libs (up to ~8s)
   await new Promise(res=>{
     let t=0; const h=setInterval(()=>{ if (window._libsReady){ clearInterval(h); res(); } if (++t>80){ clearInterval(h); res(); } }, 100);
   });
@@ -564,7 +582,6 @@ async function boot(){
   fillPresetSelect();
   buildSequencerUI();
 
-  // audio routing
   ctx = new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
   src = ctx.createMediaElementSource(audio);
   const g = ctx.createGain(); g.gain.value=+volEl.value;
@@ -573,11 +590,9 @@ async function boot(){
   viz = BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
   viz.connectAudio(g);
 
-  // sizing + render
   size(); addEventListener('resize', size, {passive:true});
   (function loop(){ viz && viz.render(); requestAnimationFrame(loop); })();
 
-  // audio bindings
   audio.src = audioSrc.value.trim();
   volEl.oninput = e=> audio.volume=+e.target.value;
   seekEl.oninput = e=>{ if (audio.duration) audio.currentTime = e.target.value*audio.duration; };
@@ -587,12 +602,14 @@ async function boot(){
     barEl.value = Math.max(1, Math.floor(currentBar()));
   });
 
+  // init overlay tint
+  updateOverlayTint();
+
   playBtn.onclick = async ()=>{
     if (!started){
       if (ctx.state==='suspended') await ctx.resume();
       await audio.play();
       started=true;
-      // initial load
       loadPresetByName(selPreset.value, 0.0);
       scheduleMicro();
       scheduleCues();
@@ -613,6 +630,7 @@ async function boot(){
   document.getElementById('applyNow').onclick = ()=>{
     currentPresetName = selPreset.value;
     applyLiveDebounced();
+    updateOverlayTint();
   };
   document.getElementById('previewNext').onclick = ()=> { currentPresetName = selPreset.value; };
 
