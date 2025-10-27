@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Butterchurn Preset Lab v3 (tint overlay)</title>
+<title>Butterchurn Preset Lab v3 (precise cues + tint overlay)</title>
 <style>
   :root{
     --ui-bg: rgba(255,255,255,.88);
@@ -20,13 +20,13 @@
   #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
   #probe{position:absolute;left:-9999px;top:-9999px;width:64px;height:64px}
 
-  /* NEW: visible tint overlay */
+  /* visible tint overlay above the canvas */
   #tintOverlay{
     position:absolute; inset:0;
     pointer-events:none;
-    mix-blend-mode:color;   /* apply hue to the viz */
-    opacity:0;              /* driven by Tint strength slider */
-    background:#ffffff;     /* updated live from RGB sliders */
+    mix-blend-mode:color;
+    opacity:0;
+    background:#ffffff;
   }
 
   fieldset{border:1px solid #1e1e1e;border-radius:10px;padding:10px}
@@ -97,11 +97,8 @@
         <label>Tint G <input id="tG" type="range" min="0" max="2" step="0.01" value="1.00"/></label>
         <label>Tint B <input id="tB" type="range" min="0" max="2" step="0.01" value="1.00"/></label>
       </div>
-      <!-- NEW: tint strength slider -->
       <div class="row">
-        <label>Tint strength
-          <input id="tStrength" type="range" min="0" max="1" step="0.01" value="0.00"/>
-        </label>
+        <label>Tint strength <input id="tStrength" type="range" min="0" max="1" step="0.01" value="0.00"/></label>
       </div>
       <div class="row">
         <label>Micro morph (bars) <input id="micro" type="number" min="2" max="16" step="2" value="4"/></label>
@@ -167,9 +164,7 @@
 
   <main id="right">
     <canvas id="viz"></canvas>
-    <!-- NEW overlay sits above the canvas -->
     <div id="tintOverlay" aria-hidden="true"></div>
-
     <canvas id="probe" width="64" height="64" aria-hidden="true"></canvas>
     <audio id="player" preload="auto" playsinline crossorigin="anonymous"></audio>
   </main>
@@ -207,7 +202,7 @@ function loadScriptPair(primary, fallback){
 /* ---------- DOM ---------- */
 const wrap = document.getElementById('right');
 const canvas = document.getElementById('viz');
-const tintOverlay = document.getElementById('tintOverlay'); // NEW
+const tintOverlay = document.getElementById('tintOverlay');
 const probe = document.getElementById('probe');
 const audio = document.getElementById('player');
 
@@ -216,7 +211,7 @@ const gamma = document.getElementById('gamma');
 const decay = document.getElementById('decay');
 const warp = document.getElementById('warp');
 const tR = document.getElementById('tR'), tG = document.getElementById('tG'), tB = document.getElementById('tB');
-const tStrength = document.getElementById('tStrength'); // NEW
+const tStrength = document.getElementById('tStrength');
 const micro = document.getElementById('micro');
 const blendSec = document.getElementById('blendSec');
 
@@ -254,17 +249,21 @@ const edMakeCue = document.getElementById('edMakeCue');
 let ctx, src, viz, PRESETS={dict:{}, names:[]}, started=false;
 let cues=[]; // {bar, name, blendSec, _done?}
 let currentPresetName=null;
-let microTimer=null, cueTimer=null, whiteWatch=null;
+let microTimer=null, whiteWatch=null;
+
+/* precise cue scheduler state */
+let nextCueIdx = 0;
+let cueTO = null;
 
 /* ---------- utils ---------- */
 function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
-function fmt(t){ if(!isFinite(t)) return '0:00'; const m=(t/60|0), s=t%60|0; return m+':'+(s<10?'0':'')+s; }
+function fmt(t){ if(!isFinite(t)) return '0:00'; const m=(t/60|0), s=t%60|0; return m+':' + (s<10?'0':'') + s; }
 function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; viz && viz.setRendererSize(r.width,r.height); }
 function MS_PER_BAR(){ const bpm = parseFloat(bpmEl.value||120); return (60000/bpm)*4; }
-function currentBar(){ return ((audio.currentTime*1000)/MS_PER_BAR())+1; } // 1-based
+function currentBar(){ return ((audio.currentTime*1000)/MS_PER_BAR())+1; }
 function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
 
-/* NEW: visible overlay tint from RGB + strength */
+/* overlay tint */
 function updateOverlayTint(){
   let r=+tR.value, g=+tG.value, b=+tB.value;
   const max=Math.max(r,g,b,1);
@@ -275,6 +274,7 @@ function updateOverlayTint(){
   tintOverlay.style.opacity = (+tStrength.value).toString();
 }
 
+/* merge preset packs */
 function mergePresetPacks(){
   const libs=[];
   if (window.butterchurnPresets) libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
@@ -285,7 +285,7 @@ function mergePresetPacks(){
   return {dict,names};
 }
 
-/* ---------- presets UI ---------- */
+/* populate preset pickers */
 function fillPresetSelect(){
   selPreset.innerHTML='';
   PRESETS.names.sort().forEach(n=>{
@@ -295,7 +295,7 @@ function fillPresetSelect(){
   selPreset.value = pick;
 }
 
-/* ---------- style mutate (LIVE) ---------- */
+/* live mutate & load */
 function mutate(base){
   const p = JSON.parse(JSON.stringify(base));
   p.ob_a = 0; p.ib_a = 0;
@@ -339,10 +339,10 @@ const applyLiveDebounced = debounce(()=> {
 }, 120);
 [gamma, decay, warp, tR, tG, tB, tStrength].forEach(el => el.addEventListener('input', ()=>{
   applyLiveDebounced();
-  updateOverlayTint(); // keep overlay in sync
+  updateOverlayTint();
 }, { passive:true }));
 
-/* ---------- micro morph ---------- */
+/* micro morph (periodic re-apply of current preset) */
 function scheduleMicro(){
   if (microTimer) clearInterval(microTimer);
   const span = Math.max(2, parseInt(micro.value||4,10));
@@ -352,44 +352,65 @@ function scheduleMicro(){
   }, MS_PER_BAR()*span);
 }
 
-/* ---------- cues ---------- */
-function scheduleCues(){
-  if (cueTimer) clearInterval(cueTimer);
-  const tick = 100;
-  cueTimer = setInterval(()=>{
-    const tms = audio.currentTime*1000;
-    const due = cues.filter(c => !c._done && tms >= (c.bar-1)*MS_PER_BAR()-50);
-    if (due.length){
-      due.sort((a,b)=>a.bar-b.bar).forEach(c=>{
-        c._done=true;
-        loadPresetByName(c.name, c.blendSec);
-      });
-      renderTimeline();
-    }
-    barEl.value = Math.max(1, Math.floor(currentBar()));
-  }, tick);
+/* -------- precise per-cue scheduler (no polling) -------- */
+function sortCues(){ cues.sort((a,b)=>a.bar-b.bar); }
+
+function scheduleNextCue(){
+  if (cueTO) { clearTimeout(cueTO); cueTO=null; }
+  if (nextCueIdx >= cues.length) return;
+
+  const c = cues[nextCueIdx];
+  const targetMs = (c.bar - 1) * MS_PER_BAR();
+  const nowMs = (audio.currentTime || 0) * 1000;
+  let delay = Math.max(0, targetMs - nowMs);
+
+  // If we're already past (seek), fire immediately
+  if (delay < 10) delay = 0;
+
+  cueTO = setTimeout(()=>{
+    loadPresetByName(c.name, c.blendSec);
+    c._done = true;
+    nextCueIdx++;
+    renderTimeline();
+    scheduleNextCue();
+  }, delay);
 }
+
+function resetCueSchedule(){
+  if (cueTO) { clearTimeout(cueTO); cueTO=null; }
+  if (!cues.length) return;
+  sortCues();
+  cues.forEach(c=> delete c._done);
+  const nowMs = (audio.currentTime || 0) * 1000;
+  nextCueIdx = cues.findIndex(c => ((c.bar - 1) * MS_PER_BAR()) >= (nowMs - 50));
+  if (nextCueIdx < 0) nextCueIdx = cues.length; // all passed
+  scheduleNextCue();
+}
+
+/* timeline UI */
 function renderTimeline(){
   timeline.innerHTML='';
-  if (!cues.length){ const d=document.createElement('div'); d.className='muted'; d.textContent='No cues yet.'; timeline.appendChild(d); return; }
-  cues.sort((a,b)=>a.bar-b.bar);
+  if (!cues.length){
+    const d=document.createElement('div'); d.className='muted'; d.textContent='No cues yet.'; timeline.appendChild(d); return;
+  }
+  sortCues();
   cues.forEach((c,idx)=>{
     const row=document.createElement('div'); row.className='cue';
     const left=document.createElement('div'); left.className='name'; left.textContent=`Bar ${c.bar} • ${c.name}`;
     const mid=document.createElement('div'); mid.textContent=`blend ${c.blendSec}s`; mid.className='muted';
     const del=document.createElement('button'); del.textContent='✕'; del.title='Remove';
-    del.onclick=()=>{ cues.splice(idx,1); renderTimeline(); scheduleCues(); };
+    del.onclick=()=>{ cues.splice(idx,1); renderTimeline(); resetCueSchedule(); };
     row.appendChild(left); row.appendChild(mid); row.appendChild(del);
     timeline.appendChild(row);
   });
 }
 
-/* ---------- export ---------- */
+/* export */
 function exportCode(){
   const style = {
     gamma:+gamma.value, decay:+decay.value, warp:+warp.value,
     tint:{ r:+tR.value, g:+tG.value, b:+tB.value },
-    overlay:{ strength:+tStrength.value },        // NEW
+    overlay:{ strength:+tStrength.value },
     microBars: parseInt(micro.value,10)
   };
   const schedule = cues.slice().sort((a,b)=>a.bar-b.bar).map(c=>({ bar:c.bar, name:c.name, blendSec:c.blendSec }));
@@ -408,13 +429,13 @@ function applyStyle(base){
   return p;
 }
 const MICRO_BARS = ${style.microBars};
-// Note: if you want the visible overlay tint in production, add a
-// CSS mix-blend-mode:color overlay above your canvas and set its opacity to ${style.overlay.strength}.
+// To replicate the visible overlay tint in production, add a CSS element above the canvas
+// with mix-blend-mode: color; opacity: ${style.overlay.strength};
 `;
   out.value = code;
 }
 
-/* ---------- sequencer UI (5 steps) ---------- */
+/* sequencer (up to 5) */
 function buildSequencerUI(){
   seqRows.innerHTML='';
   const barOpts = [16,32,48,64];
@@ -467,15 +488,16 @@ function applySequencerToCues(){
   cues = seq.slice();
   cues.forEach(c => delete c._done);
   renderTimeline();
-  scheduleCues();
+  resetCueSchedule();
 
+  // load launch immediately if needed
   currentPresetName = launchPreset;
   if (viz && PRESETS.dict[launchPreset]) viz.loadPreset(mutate(PRESETS.dict[launchPreset]), 0.0);
 }
 seqApply.addEventListener('click', applySequencerToCues);
-seqClear.addEventListener('click', ()=>{ seqRows.innerHTML=''; cues.length=0; renderTimeline(); scheduleCues(); });
+seqClear.addEventListener('click', ()=>{ seqRows.innerHTML=''; cues.length=0; renderTimeline(); resetCueSchedule(); });
 
-/* ---------- Editor (derive) ---------- */
+/* editor (derive) */
 function deepClone(o){ return JSON.parse(JSON.stringify(o)); }
 function buildDerivativeFromEditor(baseName){
   const base = PRESETS.dict[baseName];
@@ -534,11 +556,11 @@ edMakeCue.addEventListener('click', ()=>{
   if (!PRESETS.names.includes(custom.name)) PRESETS.names.push(custom.name);
   const barNum = Math.max(1, Math.floor(currentBar()));
   const c = { bar: barNum, name: custom.name, blendSec: Math.max(0, +cueBlend.value||1.2) };
-  cues.push(c); renderTimeline(); scheduleCues();
+  cues.push(c); renderTimeline(); resetCueSchedule();
   alert(`Queued "${custom.name}" at bar ${barNum}`);
 });
 
-/* ---------- white-out watchdog ---------- */
+/* white-out watchdog */
 function armWhiteWatch(presetName){
   if (whiteWatch) { clearInterval(whiteWatch); whiteWatch=null; }
   const pctx = probe.getContext('2d', {willReadFrequently:true}); if(!pctx) return;
@@ -566,7 +588,7 @@ function armWhiteWatch(presetName){
   }, 2000);
 }
 
-/* ---------- boot ---------- */
+/* boot */
 function getBC(){
   const bc=window.butterchurn;
   return bc && (typeof bc.createVisualizer==='function' ? bc : bc.default);
@@ -602,7 +624,6 @@ async function boot(){
     barEl.value = Math.max(1, Math.floor(currentBar()));
   });
 
-  // init overlay tint
   updateOverlayTint();
 
   playBtn.onclick = async ()=>{
@@ -612,10 +633,10 @@ async function boot(){
       started=true;
       loadPresetByName(selPreset.value, 0.0);
       scheduleMicro();
-      scheduleCues();
+      resetCueSchedule();            // start precise cue timer
       playBtn.textContent='⏸';
     }else{
-      if (audio.paused){ await audio.play(); playBtn.textContent='⏸'; }
+      if (audio.paused){ await audio.play(); resetCueSchedule(); playBtn.textContent='⏸'; }
       else { audio.pause(); playBtn.textContent='▶'; }
     }
   };
@@ -624,8 +645,9 @@ async function boot(){
     audio.src = audioSrc.value.trim();
     started=false; playBtn.textContent='▶';
     cues.forEach(c=> delete c._done);
+    if (cueTO){ clearTimeout(cueTO); cueTO=null; }
   };
-  snap0Btn.onclick = ()=>{ audio.currentTime = 0; };
+  snap0Btn.onclick = ()=>{ audio.currentTime = 0; resetCueSchedule(); };
 
   document.getElementById('applyNow').onclick = ()=>{
     currentPresetName = selPreset.value;
@@ -636,11 +658,16 @@ async function boot(){
 
   addCueBtn.onclick = ()=>{
     const c = { bar: Math.max(1, parseInt(cueBar.value||1,10)), name: selPreset.value, blendSec: Math.max(0, +cueBlend.value||0) };
-    cues.push(c); renderTimeline(); scheduleCues();
+    cues.push(c); renderTimeline(); resetCueSchedule();
   };
-  clearCuesBtn.onclick = ()=>{ cues.length=0; renderTimeline(); scheduleCues(); };
+  clearCuesBtn.onclick = ()=>{ cues.length=0; renderTimeline(); resetCueSchedule(); };
 
   exportBtn.onclick = exportCode;
+
+  // keep cues aligned when user operates the transport
+  audio.addEventListener('seeked', resetCueSchedule);
+  audio.addEventListener('play', resetCueSchedule);
+  audio.addEventListener('loadedmetadata', resetCueSchedule);
 
   return true;
 }
