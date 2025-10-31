@@ -3,17 +3,18 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualizer – PsyTech 134 BPM (32-bar cadence)</title>
+<title>Visualizer – Track 4 (124 BPM, ambient + beats)</title>
 <style>
   :root{
     --ui-bg: rgba(255,255,255,.88);
     --ui-fg: #3e3e3e;
-    --play-oval: rgba(140, 195, 120, .38);
+    --play-oval: rgba(140,195,120,.38);
     --font: 400 12px/22px Clarkson, "Proxima Nova", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   }
   html,body{margin:0;height:100%;background:#000;color:var(--ui-fg);font:var(--font)}
   #vizwrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}
   #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
+
   .ui{
     position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.75rem;
     padding:.6rem .8rem;background:var(--ui-bg);color:var(--ui-fg);font:var(--font);
@@ -21,14 +22,18 @@
     transition:opacity .25s ease, transform .25s ease;pointer-events:none;
   }
   #vizwrap:hover .ui, #vizwrap.show-ui .ui{opacity:1;transform:none;pointer-events:auto}
-  .starter{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45))}
+
+  .starter{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45));
+  }
   .play-oval{
     all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
     width:112px;height:72px;border-radius:9999px;background:var(--play-oval);
     box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18)
   }
   .play-oval svg{width:24px;height:24px;fill:#fff}
+
   .btn{
     all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
     width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)
@@ -40,6 +45,7 @@
   .grow{flex:1}.spacer{width:8px}
   input[type="range"]{-webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none}
   input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
+
   #probe{position:absolute;left:-9999px;top:-9999px;width:64px;height:64px}
 </style>
 </head>
@@ -64,9 +70,9 @@
       </button>
     </div>
 
-    <!-- Absolute URL to your audio on GitHub Pages -->
+    <!-- Absolute URL so CORS/click quirks can't break start -->
     <audio id="player" preload="auto" crossorigin="anonymous">
-      <source src="https://rkangeluk.github.io/psy-viz1/track5.mp3" type="audio/mpeg">
+      <source src="https://rkangeluk.github.io/psy-viz1/track4.mp3" type="audio/mpeg">
     </audio>
 
     <canvas id="probe" width="64" height="64" aria-hidden="true"></canvas>
@@ -81,5 +87,144 @@
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra2.min.js"></script>
 
   <script>
+  /* —— helpers —— */
   const pad = s => (s<10?'0':'')+s;
-  const fmt = t => (!isFinite(t)?'0:00':
+  const fmt = t => (!isFinite(t)?'0:00': ((t/60)|0)+':'+pad((t%60)|0));
+  function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
+  function seededShuffle(arr, seedStr){
+    let seed=0; for(let i=0;i<seedStr.length;i++) seed=(seed*31 + seedStr.charCodeAt(i))>>>0;
+    function rnd(){ seed=(1664525*seed+1013904223)>>>0; return (seed & 0xfffffff)/0x10000000; }
+    const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a;
+  }
+
+  /* —— DOM —— */
+  const wrap=document.getElementById('vizwrap'), canvas=document.getElementById('viz');
+  const starter=document.getElementById('starter'), startBtn=document.getElementById('startBtn');
+  const audio=document.getElementById('player');
+  const btnPlay=document.getElementById('play'), btnNext=document.getElementById('next');
+  const rSeek=document.getElementById('seek'), rVol=document.getElementById('vol'), tTime=document.getElementById('time'), tDur=document.getElementById('dur');
+  const probe=document.getElementById('probe').getContext('2d',{willReadFrequently:true});
+
+  /* —— state —— */
+  const BPM=124, BARS_PER_CHANGE=16; /* adjust to 16 or 32 as you prefer */
+  const MS_PER_BAR=(60000/BPM)*4;
+  let ctx, src, viz, PRESETS={dict:{},names:[]}, keys=[], index=0;
+  let changeTO=null, changeInterval=null, whiteWatch=null;
+
+  const BLOCKLIST=new Set(['Geiss - Desert Rose','Yin - Whitewash']);
+
+  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; viz && viz.setRendererSize(r.width,r.height); }
+  function mergePresetPacks(){
+    const libs=[];
+    if (window.butterchurnPresets) libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
+    if (window.butterchurnPresetsNonMinimal) libs.push((butterchurnPresetsNonMinimal.default||butterchurnPresetsNonMinimal).getPresets());
+    if (window.butterchurnPresetsExtra) libs.push((butterchurnPresetsExtra.default||butterchurnPresetsExtra).getPresets());
+    if (window.butterchurnPresetsExtra2) libs.push((butterchurnPresetsExtra2.default||butterchurnPresetsExtra2).getPresets());
+    const dict=Object.assign({},...libs), names=Object.keys(dict);
+    return {dict,names};
+  }
+  function buildPack(){
+    const re=/(ambient|tunnel|spiral|kaleid|vortex|wormhole|fractal|nebula|grid|lines|rings|radial|reaction|diffusion|cells|liquid|plasma)/i;
+    let pool=PRESETS.names.filter(n=>re.test(n)&&!BLOCKLIST.has(n));
+    if (pool.length<14) pool=PRESETS.names.filter(n=>!BLOCKLIST.has(n));
+    if (pool.length<8) pool=PRESETS.names;
+    return seededShuffle(pool,'ambient-124-v1');
+  }
+  function styleForTrack(base){
+    const p=JSON.parse(JSON.stringify(base));
+    p.ob_a=0; p.ib_a=0; p.gamma=(typeof p.gamma==='number'?p.gamma:1.12); p.decay=Math.min(0.994,(typeof p.decay==='number'?p.decay:0.990));
+    p.per_frame=(p.per_frame||"")+"qA=0.85*qA+0.15*(0.5*bass_att+0.5*mid_att); zoom=zoom*(1.0+0.006*qA); rot=rot+0.0008;";
+    return p;
+  }
+  function loadByName(name, blend=1.2){
+    const base=PRESETS.dict[name]; if(!base) return false;
+    try{ viz.loadPreset(styleForTrack(base), blend); armWhiteWatch(name); return true; }catch(e){ console.warn('preset fail',name,e); return false; }
+  }
+  function loadByIndex(i, blend=1.0){
+    if(!keys.length) keys=buildPack();
+    index=((i%keys.length)+keys.length)%keys.length;
+    let tries=0; while(tries<Math.min(8,keys.length) && !loadByName(keys[index], blend)){ index=(index+1)%keys.length; tries++; }
+  }
+  function clearCadence(){ if(changeTO){clearTimeout(changeTO);changeTO=null;} if(changeInterval){clearInterval(changeInterval);changeInterval=null;} }
+  function scheduleCadence(){
+    clearCadence(); if(!audio.duration||!isFinite(audio.currentTime)) return;
+    const curBar=((audio.currentTime*1000)/MS_PER_BAR)+1;
+    const nextBoundary=((Math.floor((curBar-1)/BARS_PER_CHANGE)+1)*BARS_PER_CHANGE)+1;
+    const firstDelay=Math.round(Math.max(0, (nextBoundary-curBar)*MS_PER_BAR));
+    changeTO=setTimeout(()=>{ loadByIndex(index+1,1.0); changeInterval=setInterval(()=>loadByIndex(index+1,1.0), Math.round(MS_PER_BAR*BARS_PER_CHANGE)); }, firstDelay);
+  }
+  function armWhiteWatch(name){
+    if(whiteWatch){clearInterval(whiteWatch);whiteWatch=null;}
+    let bright=0;
+    whiteWatch=setInterval(()=>{
+      try{
+        probe.drawImage(canvas,0,0,64,64);
+        const d=probe.getImageData(0,0,64,64).data; let sum=0,n=0;
+        for(let i=0;i<d.length;i+=4){ const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255; sum+=0.2126*r+0.7152*g+0.0722*b; n++; }
+        const avg=sum/n; bright=(avg>0.97)?bright+1:0;
+        if(bright>=3){ console.log('white-out, skipping:',name); loadByIndex(index+1,1.0); clearInterval(whiteWatch); whiteWatch=null; }
+      }catch(e){ clearInterval(whiteWatch); whiteWatch=null; }
+    },2000);
+  }
+  function getBC(){ const bc=window.butterchurn; return bc && (typeof bc.createVisualizer==='function'?bc:bc.default); }
+
+  async function boot(){
+    if(!webglOK()){ alert('WebGL not available. Enable hardware acceleration.'); return false; }
+    const BC=getBC(), merged=mergePresetPacks(); if(!BC||!merged.names.length){ alert('Preset libraries failed to load.'); return false; }
+    PRESETS=merged;
+
+    ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
+    const g=ctx.createGain(); g.gain.value=+rVol.value;
+    const srcNode=ctx.createMediaElementSource(audio); srcNode.connect(ctx.destination); srcNode.connect(g);
+
+    viz=BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
+    viz.connectAudio(g);
+
+    size(); addEventListener('resize', size, {passive:true});
+    (function loop(){ viz && viz.render(); requestAnimationFrame(loop); })();
+
+    rVol.addEventListener('input', e=> audio.volume=+e.target.value, {passive:true});
+    rSeek.addEventListener('input', e=>{ if(audio.duration) audio.currentTime = e.target.value*audio.duration; }, {passive:true});
+    audio.addEventListener('timeupdate', ()=>{
+      const t=audio.currentTime||0; tTime.textContent=fmt(t);
+      if(audio.duration){ tDur.textContent=fmt(audio.duration); rSeek.value=t/audio.duration; }
+    });
+    audio.addEventListener('loadedmetadata', scheduleCadence);
+    audio.addEventListener('seeked', scheduleCadence);
+    audio.addEventListener('play', scheduleCadence);
+
+    return true;
+  }
+
+  async function startPlayback(){
+    try{
+      if(!ctx){ const ok=await boot(); if(!ok) return; }
+      if(ctx.state==='suspended') await ctx.resume();
+      await audio.play();
+      starter.style.display='none';
+      btnPlay.textContent='⏸';
+      if(!keys.length) keys=buildPack(); index=Math.min(2, keys.length-1);
+      loadByIndex(index,0.0);
+      scheduleCadence();
+    }catch(e){ console.error('play failed', e); alert('Could not start audio.'); }
+  }
+
+  // Start wiring: overlay, button, canvas, keyboard
+  startBtn.addEventListener('click', startPlayback);
+  starter.addEventListener('click', e=>{ if(e.target===starter) startPlayback(); });
+  canvas.addEventListener('click', startPlayback);
+  document.addEventListener('keydown', e=>{ if(e.code==='Space'||e.key==='Enter') startPlayback(); });
+
+  btnPlay.addEventListener('click', async ()=>{
+    try{
+      if(!ctx){ const ok=await boot(); if(!ok) return; }
+      if(audio.paused){ await audio.play(); scheduleCadence(); btnPlay.textContent='⏸'; }
+      else { audio.pause(); btnPlay.textContent='▶'; }
+    }catch(e){ console.error(e); alert('Could not start audio.'); }
+  });
+  btnNext.addEventListener('click', ()=>{ loadByIndex(index+1,1.0); scheduleCadence(); });
+
+  audio.load();
+  </script>
+</body>
+</html>
