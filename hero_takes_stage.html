@@ -102,4 +102,33 @@
   const AUDIO_URL = Q.get('audio') || 'https://rkangeluk.github.io/psy-viz1/hero_takes_stage.mp3';
   const BPM       = +(Q.get('bpm')  || 134);
   const BARS      = +(Q.get('bars') || 32);
-  const SEED
+  const SEED      = Q.get('seed')   || 'hero_takes_stage_obscure';
+  const MS_PER_BAR = (60000 / BPM) * 4;
+
+  /* ========= DOM ========= */
+  const wrap    = document.getElementById('vizwrap');
+  const canvas  = document.getElementById('viz');
+  const starter = document.getElementById('starter');
+  const startBtn= document.getElementById('startBtn');
+  const audio   = document.getElementById('player');
+  const btnPlay = document.getElementById('play');
+  const btnNext = document.getElementById('next');
+  const rSeek   = document.getElementById('seek');
+  const rVol    = document.getElementById('vol');
+  const tTime   = document.getElementById('time');
+  const tDur    = document.getElementById('dur');
+
+  /* ========= State ========= */
+  let ctx, viz, PRESETS={dict:{},names:[]}, keys=[], index=0;
+  let changeTO=null, changeInterval=null;
+
+  /* ========= Helpers ========= */
+  const pad = s => (s<10?'0':'')+s;
+  const fmt = t => (!isFinite(t)?'0:00': ((t/60)|0)+':'+pad((t%60)|0));
+  function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
+  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; viz && viz.setRendererSize(r.width,r.height); }
+  function hintUI(){ wrap.classList.add('show-ui'); clearTimeout(wrap._h); wrap._h=setTimeout(()=>wrap.classList.remove('show-ui'), 1200); }
+  function seededShuffle(arr, seedStr){
+    let seed=0; for(let i=0;i<seedStr.length;i++) seed=(seed*31 + seedStr.charCodeAt(i))>>>0;
+    function rnd(){ seed=(1664525*seed+1013904223)>>>0; return (seed & 0xfffffff)/0x10000000; }
+    const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a]()*
