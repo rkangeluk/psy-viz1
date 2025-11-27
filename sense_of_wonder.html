@@ -13,11 +13,9 @@
   }
   html,body{margin:0;height:100%;background:#000;color:var(--ui-fg);font:var(--font)}
 
-  /* Layout */
   #vizwrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}
   #viz{position:absolute;inset:0;z-index:0;display:block;width:100%;height:100%}
 
-  /* Starter overlay is ABOVE canvas and catches clicks */
   .starter{
     position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
     background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45));
@@ -29,7 +27,6 @@
   }
   .play-oval svg{width:24px;height:24px;fill:#fff}
 
-  /* Hover UI bar (BOTTOM) — ABOVE canvas, but only clickable when shown */
   .ui{
     position:absolute;left:0;right:0;bottom:0;z-index:10;
     display:flex;align-items:center;gap:.75rem;
@@ -37,10 +34,10 @@
     border-top-left-radius:10px;border-top-right-radius:10px;
     opacity:0;transform:translateY(8px);
     transition:opacity .25s ease, transform .25s ease;
-    pointer-events:none;            /* hidden state: not clickable */
+    pointer-events:none;
   }
   #vizwrap:hover .ui, #vizwrap.show-ui .ui{
-    opacity:1;transform:none;pointer-events:auto; /* visible: clickable */
+    opacity:1;transform:none;pointer-events:auto;
   }
 
   .btn{
@@ -55,38 +52,34 @@
   input[type="range"]{-webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none}
   input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
 
-  /* hidden probe (optional for watchdog; harmless if unused) */
   #probe{position:absolute;left:-9999px;top:-9999px;width:64px;height:64px}
 </style>
 </head>
 <body>
-  <div id="vizwrap" aria-label="Audio visualizer">
+  <div id="vizwrap">
     <canvas id="viz"></canvas>
 
-    <!-- Hover-only transport (clickable only when visible) -->
-    <div class="ui" role="group" aria-label="Player controls">
-      <button id="play" class="btn" aria-label="Play/Pause" type="button">▶</button>
+    <div class="ui">
+      <button id="play" class="btn">▶</button>
       <span id="time" class="label">0:00</span>
-      <input id="seek" type="range" min="0" max="1" step="0.001" value="0" class="grow" aria-label="Seek"/>
+      <input id="seek" type="range" min="0" max="1" step="0.001" value="0" class="grow"/>
       <span id="dur" class="label">0:00</span>
       <div class="spacer"></div>
-      <input id="vol" type="range" min="0" max="1" step="0.01" value="0.9" style="width:110px" aria-label="Volume"/>
+      <input id="vol" type="range" min="0" max="1" step="0.01" value="0.9" style="width:110px"/>
       <div class="spacer"></div>
-      <button id="next" class="pill" aria-label="Next preset" type="button">Next</button>
+      <button id="next" class="pill">Next</button>
     </div>
 
-    <!-- User-gesture gate (click anywhere on this overlay OR the canvas) -->
-    <div id="starter" class="starter" role="dialog" aria-label="Click to start">
-      <button id="startBtn" class="play-oval" aria-label="Play" type="button">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+    <div id="starter" class="starter">
+      <button id="startBtn" class="play-oval">
+        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </button>
     </div>
 
     <audio id="player" preload="auto" crossorigin="anonymous"></audio>
-    <canvas id="probe" width="64" height="64" aria-hidden="true"></canvas>
+    <canvas id="probe" width="64" height="64"></canvas>
   </div>
 
-  <!-- Butterchurn libs -->
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
@@ -94,36 +87,102 @@
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra2.min.js"></script>
 
-  <script>
-  /* ========= CONFIG VIA URL PARAMS (but with sensible defaults) =========
-     ?audio=<absolute mp3 url>&bpm=134&bars=32&seed=my-seed
-  */
-  const Q         = new URLSearchParams(location.search);
-  const AUDIO_URL = Q.get('audio') || 'https://rkangeluk.github.io/psy-viz1/sense_of_wonder.mp3';
-  const BPM       = +(Q.get('bpm')  || 134);
-  const BARS      = +(Q.get('bars') || 32);
-  const SEED      = Q.get('seed')   || 'sense_of_wonder_obscure';
-  const MS_PER_BAR = (60000 / BPM) * 4;
+<script>
+const Q         = new URLSearchParams(location.search);
+const AUDIO_URL = Q.get('audio') || 'https://rkangeluk.github.io/psy-viz1/sense_of_wonder.mp3';
+const BPM       = +(Q.get('bpm')  || 134);
+const BARS      = +(Q.get('bars') || 32);
+const SEED      = Q.get('seed')   || 'sense_of_wonder_delicate';
+const MS_PER_BAR = (60000 / BPM) * 4;
 
-  /* ========= DOM ========= */
-  const wrap    = document.getElementById('vizwrap');
-  const canvas  = document.getElementById('viz');
-  const starter = document.getElementById('starter');
-  const startBtn= document.getElementById('startBtn');
-  const audio   = document.getElementById('player');
-  const btnPlay = document.getElementById('play');
-  const btnNext = document.getElementById('next');
-  const rSeek   = document.getElementById('seek');
-  const rVol    = document.getElementById('vol');
-  const tTime   = document.getElementById('time');
-  const tDur    = document.getElementById('dur');
+const wrap=document.getElementById('vizwrap'),canvas=document.getElementById('viz'),
+starter=document.getElementById('starter'),startBtn=document.getElementById('startBtn'),
+audio=document.getElementById('player'),btnPlay=document.getElementById('play'),
+btnNext=document.getElementById('next'),rSeek=document.getElementById('seek'),
+rVol=document.getElementById('vol'),tTime=document.getElementById('time'),tDur=document.getElementById('dur');
 
-  /* ========= State ========= */
-  let ctx, viz, PRESETS={dict:{},names:[]}, keys=[], index=0;
-  let changeTO=null, changeInterval=null;
+let ctx,viz,PRESETS={dict:{},names:[]},keys=[],index=0,changeTO=null,changeInterval=null;
 
-  /* ========= Helpers ========= */
-  const pad = s => (s<10?'0':'')+s;
-  const fmt = t => (!isFinite(t)?'0:00': ((t/60)|0)+':'+pad((t%60)|0));
-  function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
-  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas
+const pad=s=>(s<10?'0':'')+s,fmt=t=>!isFinite(t)?'0:00':((t/60)|0)+':'+pad((t%60)|0);
+function webglOK(){const c=document.createElement('canvas');return!!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl'));}
+function size(){const r=wrap.getBoundingClientRect();canvas.width=r.width;canvas.height=r.height;viz&&viz.setRendererSize(r.width,r.height);}
+function hintUI(){wrap.classList.add('show-ui');clearTimeout(wrap._h);wrap._h=setTimeout(()=>wrap.classList.remove('show-ui'),1200);}
+function seededShuffle(arr,s){let seed=0;for(let i=0;i<s.length;i++)seed=(seed*31+s.charCodeAt(i))>>>0;
+function rand(){seed=(1664525*seed+1013904223)>>>0;return(seed&0xfffffff)/0x10000000;}
+const a=arr.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(rand()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+
+function mergePresetPacks(){
+  const libs=[];
+  if(window.butterchurnPresets)libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
+  if(window.butterchurnPresetsNonMinimal)libs.push((butterchurnPresetsNonMinimal.default||butterchurnPresetsNonMinimal).getPresets());
+  if(window.butterchurnPresetsExtra)libs.push((butterchurnPresetsExtra.default||butterchurnPresetsExtra).getPresets());
+  if(window.butterchurnPresetsExtra2)libs.push((butterchurnPresetsExtra2.default||butterchurnPresetsExtra2).getPresets());
+  const dict=Object.assign({},...libs),names=Object.keys(dict);return{dict,names};
+}
+
+function buildPack(){
+  let pool=PRESETS.names;
+  const skip=["geiss","yin","milkdrop","flexi","martin","yurop"];
+  pool=pool.filter(n=>!skip.some(w=>n.toLowerCase().includes(w)));
+  if(!pool.length)pool=PRESETS.names.slice();
+  return seededShuffle(pool,SEED).slice(0,1);
+}
+
+function getBC(){const bc=window.butterchurn;return bc&&(typeof bc.createVisualizer==='function'?bc:bc.default);}
+function loadByIndex(i,blend=1.2){
+  if(!keys.length)keys=buildPack();
+  index=((i%keys.length)+keys.length)%keys.length;
+  viz.loadPreset(PRESETS.dict[keys[index]],blend);
+}
+
+function clearCadence(){if(changeTO){clearTimeout(changeTO);changeTO=null;}if(changeInterval){clearInterval(changeInterval);changeInterval=null;}}
+function scheduleCadence(){
+  clearCadence();if(!audio.duration)return;
+  const cur=((audio.currentTime*1000)/MS_PER_BAR)+1;
+  const next=((Math.floor((cur-1)/BARS)+1)*BARS)+1;
+  changeTO=setTimeout(()=>{loadByIndex(index+1,1.2);
+    changeInterval=setInterval(()=>loadByIndex(index+1,1.2),Math.round(MS_PER_BAR*BARS));
+  },Math.round(Math.max(0,(next-cur)*MS_PER_BAR)));
+}
+
+async function boot(){
+  if(!webglOK()){alert("Enable WebGL");return false;}
+  PRESETS=mergePresetPacks();if(!PRESETS.names.length)return false;
+  const AC=window.AudioContext||window.webkitAudioContext;ctx=new AC();
+  audio.src=AUDIO_URL;const src=ctx.createMediaElementSource(audio);
+  const g=ctx.createGain();g.gain.value=+rVol.value;src.connect(ctx.destination);src.connect(g);
+  viz=getBC().createVisualizer(ctx,canvas,{width:canvas.clientWidth,height:canvas.clientHeight,pixelRatio:1});
+  viz.connectAudio(g);size();addEventListener("resize",size);
+  (function loop(){viz.render();requestAnimationFrame(loop);})();
+  rVol.oninput=e=>audio.volume=+e.target.value;
+  rSeek.oninput=e=>audio.currentTime=audio.duration*e.target.value;
+  audio.ontimeupdate=_=>{tTime.textContent=fmt(audio.currentTime);if(audio.duration)tDur.textContent=fmt(audio.duration),rSeek.value=audio.currentTime/audio.duration;}
+  audio.onloadedmetadata=scheduleCadence;
+  audio.onseeked=scheduleCadence;
+  audio.onplay=scheduleCadence;
+  return true;
+}
+
+async function startPlayback(){
+  if(!ctx){if(!await boot())return;}
+  if(ctx.state==="suspended")await ctx.resume();
+  await audio.play();starter.style.display="none";btnPlay.textContent="⏸";
+  if(!keys.length)keys=buildPack();loadByIndex(0,0.0);scheduleCadence();hintUI();
+}
+
+startBtn.onclick=startPlayback;
+starter.onclick=e=>{if(e.target===starter)startPlayback();}
+canvas.onclick=startPlayback;
+document.onkeydown=e=>{if(e.code==="Space"||e.key==="Enter")startPlayback();}
+
+btnPlay.onclick=async()=>{if(ctx.state==="suspended")await ctx.resume();
+  if(audio.paused){await audio.play();btnPlay.textContent="⏸";}
+  else{audio.pause();btnPlay.textContent="▶";}
+}
+btnNext.onclick=()=>loadByIndex(index+1,1.2);
+
+["pointerdown","keydown","touchstart"].forEach(e=>document.addEventListener(e,hintUI,{passive:true}));
+audio.load();
+</script>
+</body>
+</html>
