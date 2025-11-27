@@ -131,4 +131,140 @@
   function seededShuffle(arr, seedStr){
     let seed=0; for(let i=0;i<seedStr.length;i++) seed=(seed*31 + seedStr.charCodeAt(i))>>>0;
     function rnd(){ seed=(1664525*seed+1013904223)>>>0; return (seed & 0xfffffff)/0x10000000; }
-    const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a]()*
+    const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+    return a;
+  }
+
+  /* ========= Presets ========= */
+  function mergePresetPacks(){
+    const libs=[];
+    if (window.butterchurnPresets)           libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
+    if (window.butterchurnPresetsNonMinimal) libs.push((butterchurnPresetsNonMinimal.default||butterchurnPresetsNonMinimal).getPresets());
+    if (window.butterchurnPresetsExtra)      libs.push((butterchurnPresetsExtra.default||butterchurnPresetsExtra).getPresets());
+    if (window.butterchurnPresetsExtra2)     libs.push((butterchurnPresetsExtra2.default||butterchurnPresetsExtra2).getPresets());
+    const dict=Object.assign({},...libs), names=Object.keys(dict);
+    return {dict,names};
+  }
+
+  function buildPack(){
+    // Start from full list
+    let pool = PRESETS.names;
+
+    // Filter out more obvious / famous authors to keep things obscure
+    const skipWords = ["geiss","yin","milkdrop","flexi","martin","yurop"];
+    pool = pool.filter(name =>
+      !skipWords.some(w => name.toLowerCase().includes(w))
+    );
+    if (!pool.length) pool = PRESETS.names.slice(); // fallback
+
+    // Deterministic shuffle, then keep ONLY the first preset
+    const shuffled = seededShuffle(pool, SEED);
+    return shuffled.slice(0, 1);
+  }
+
+  /* ========= Loaders ========= */
+  function getBC(){ const bc=window.butterchurn; return bc && (typeof bc.createVisualizer==='function'?bc:bc.default); }
+  function loadByIndex(i, blend=1.2){
+    if(!keys.length) keys=buildPack();
+    index=((i%keys.length)+keys.length)%keys.length;
+    const name=keys[index], base=PRESETS.dict[name];
+    try{ viz.loadPreset(base, blend); }catch(e){ console.warn('preset failed:',name,e); }
+    // IMPORTANT: no hintUI() here — avoids UI flash on transitions
+  }
+
+  /* ========= Cadence (bar aligned) ========= */
+  function clearCadence(){ if(changeTO){clearTimeout(changeTO);changeTO=null;} if(changeInterval){clearInterval(changeInterval);changeInterval=null;} }
+  function scheduleCadence(){
+    clearCadence();
+    if(!audio.duration || !isFinite(audio.currentTime)) return;
+    const curBar=((audio.currentTime*1000)/MS_PER_BAR)+1;
+    const nextBoundary=((Math.floor((curBar-1)/BARS)+1)*BARS)+1;
+    const firstDelay=Math.round(Math.max(0,(nextBoundary-curBar)*MS_PER_BAR));
+    changeTO=setTimeout(()=>{
+      loadByIndex(index+1,1.2);
+      changeInterval=setInterval(()=>loadByIndex(index+1,1.2), Math.round(MS_PER_BAR*BARS));
+    }, firstDelay);
+  }
+
+  /* ========= Boot / Start ========= */
+  async function boot(){
+    if(!webglOK()){ alert('WebGL not available. Enable hardware acceleration.'); return false; }
+    const BC=getBC(), merged=mergePresetPacks(); if(!BC||!merged.names.length){ alert('Preset libraries failed to load.'); return false; }
+    PRESETS=merged;
+
+    const AudioCtx=window.AudioContext||window.webkitAudioContext;
+    ctx=new AudioCtx({latencyHint:'interactive'});
+
+    // Set audio source URL now
+    audio.src = AUDIO_URL;
+
+    // Route: speakers + visuals gain (tied to HTML volume)
+    const srcNode=ctx.createMediaElementSource(audio);
+    const g=ctx.createGain(); g.gain.value=+rVol.value;
+    srcNode.connect(ctx.destination); srcNode.connect(g);
+
+    viz=BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
+    viz.connectAudio(g);
+
+    size(); addEventListener('resize', size, {passive:true});
+    (function loop(){ viz && viz.render(); requestAnimationFrame(loop); })();
+
+    // Transport wiring
+    rVol.addEventListener('input', e=> audio.volume=+e.target.value, {passive:true});
+    rSeek.addEventListener('input', e=>{ if(audio.duration) audio.currentTime=e.target.value*audio.duration; }, {passive:true});
+    audio.addEventListener('timeupdate', ()=>{
+      const t=audio.currentTime||0; tTime.textContent=fmt(t);
+      if(audio.duration){ tDur.textContent=fmt(audio.duration); rSeek.value=t/audio.duration; }
+    });
+
+    audio.addEventListener('loadedmetadata', scheduleCadence);
+    audio.addEventListener('seeked', scheduleCadence);
+    audio.addEventListener('play', scheduleCadence);
+
+    return true;
+  }
+
+  async function startPlayback(){
+    try{
+      if(!ctx){ const ok=await boot(); if(!ok) return; }
+      if(ctx.state==='suspended') await ctx.resume();
+      await audio.play();
+      starter.style.display='none';
+      btnPlay.textContent='⏸';
+
+      // Start from a non-first preset for variety (within our 1-preset pack this is effectively the same)
+      if(!keys.length) keys=buildPack();
+      index=Math.min(2, keys.length-1);
+      loadByIndex(index, 0.0);
+      scheduleCadence();
+      hintUI();
+    }catch(e){ console.error('start error', e); alert('Could not start audio.'); }
+  }
+
+  // Make EVERY surface start playback so clicks can’t be lost
+  startBtn.addEventListener('click', startPlayback);
+  starter.addEventListener('click', e=>{ if(e.target===starter) startPlayback(); });
+  canvas.addEventListener('click', startPlayback);
+  document.addEventListener('keydown', e=>{ if(e.code==='Space'||e.key==='Enter') startPlayback(); });
+
+  // Transport
+  btnPlay.addEventListener('click', async ()=>{
+    try{
+      if(!ctx){ const ok=await boot(); if(!ok) return; }
+      if(ctx.state==='suspended') await ctx.resume();
+      if(audio.paused){ await audio.play(); scheduleCadence(); btnPlay.textContent='⏸'; }
+      else { audio.pause(); btnPlay.textContent='▶'; }
+    }catch(e){ console.error(e); }
+  });
+  btnNext.addEventListener('click', ()=>{ loadByIndex(index+1, 1.2); scheduleCadence(); });
+
+  // Brief UI reveal on interaction only (never on transitions)
+  ['pointerdown','keydown','touchstart'].forEach(evt=>{
+    document.addEventListener(evt, hintUI, {passive:true});
+  });
+
+  // Preload metadata to align cadence quickly
+  audio.load();
+  </script>
+</body>
+</html>
