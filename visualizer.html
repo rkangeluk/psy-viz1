@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualizer – Esser lieto (stable core, 11→21→22)</title>
+<title>Visualizer – Track 1 (stable core, 11→21→22)</title>
 <style>
   :root{
     --ui-bg: rgba(255,255,255,.88);
@@ -25,17 +25,8 @@
   #vizwrap:hover .ui{opacity:1;transform:none;pointer-events:auto}
 
   .starter{
-    position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:1.5rem;padding:1.5rem;text-align:center;color:#fff;
-    background:
-      linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.85)),
-      url('https://rkangeluk.github.io/psy-viz1/covers/psy_cover.jpeg') center/cover no-repeat;
-  }
-  .track-title{
-    font-size:24px;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    font-weight:500;
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45))
   }
   .play-oval{
     all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
@@ -73,10 +64,11 @@
       <span id="dur" class="label">0:00</span>
       <div class="spacer"></div>
       <input id="vol" type="range" min="0" max="1" step="0.01" value="0.9" style="width:110px" aria-label="Volume"/>
+      <div class="spacer"></div>
+      <button id="next" class="pill" aria-label="Next preset">Next</button>
     </div>
 
     <div id="starter" class="starter" role="dialog" aria-label="Click to start">
-      <div class="track-title">Esser lieto</div>
       <!-- Inline onclick = most reliable first-gesture path -->
       <button id="startBtn" class="play-oval" aria-label="Play"
               onclick="window._vizStart && window._vizStart()">
@@ -135,6 +127,7 @@
   const starter= document.getElementById('starter');
   const audio  = document.getElementById('player');
   const btnPlay= document.getElementById('play');
+  const btnNext= document.getElementById('next');
   const rSeek  = document.getElementById('seek');
   const rVol   = document.getElementById('vol');
   const tTime  = document.getElementById('time');
@@ -143,7 +136,6 @@
   // ===== state =====
   let ctx, src, viz, PRESET_DICT, PRESET_NAMES;
   let keys = [], index = 0, timer = null, started=false;
-  let isPlaying = false;
 
   function size(){
     const r = wrap.getBoundingClientRect();
@@ -235,12 +227,7 @@
         started=true;
         // start visuals only after audio begins
         loadByIndex(0, 0);
-        (function loop(){
-          if (viz && isPlaying) {
-            viz.render();
-          }
-          requestAnimationFrame(loop);
-        })();
+        (function loop(){ if (viz) viz.render(); requestAnimationFrame(loop); })();
         reschedule();
 
         // progress + restart logic
@@ -257,7 +244,8 @@
         }, {passive:true});
       }
 
-      starter.style.display='none';
+      document.getElementById('starter').style.display='none';
+      btnPlay.textContent='⏸';
     }catch(e){ showErr(e); }
   }
 
@@ -283,25 +271,12 @@
   btnPlay.addEventListener('click', async ()=>{
     try{
       if (!ctx) await startPlayback();
-      else if (audio.paused){ try{ await audio.play(); }catch(e){} }
-      else { audio.pause(); }
+      if (audio.paused){ try{ await audio.play(); }catch(e){} btnPlay.textContent='⏸'; }
+      else { audio.pause(); btnPlay.textContent='▶'; }
     }catch(e){ showErr(e); }
   });
 
-  // Gate visuals + button glyph off audio state
-  audio.addEventListener('play', ()=>{
-    isPlaying = true;
-    btnPlay.textContent='⏸';
-  });
-  audio.addEventListener('pause', ()=>{
-    isPlaying = false;
-    btnPlay.textContent='▶';
-  });
-  audio.addEventListener('ended', ()=>{
-    isPlaying = false;
-    btnPlay.textContent='▶';
-  });
-
+  btnNext.addEventListener('click', ()=> loadByIndex(index+1, 1.2));
   rSeek.addEventListener('input', e=>{ if (audio.duration) audio.currentTime = e.target.value * audio.duration; });
   rVol.addEventListener('input', e=>{ audio.volume = +e.target.value; });
   </script>
