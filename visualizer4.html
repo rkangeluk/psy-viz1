@@ -5,71 +5,89 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Visualizer – Track 4 (ambient evolving, 16-bar grid)</title>
 <style>
-  :root{ --ui-bg: rgba(255,255,255,.88); --ui-fg:#3e3e3e; --play-oval: rgba(140,195,120,.38);
-         --font: 400 12px/22px Clarkson,"Proxima Nova","Open Sans","Helvetica Neue",Helvetica,Arial,sans-serif; }
+  :root{
+    --ui-bg: rgba(255,255,255,.88);
+    --ui-fg:#3e3e3e;
+    --play-oval: rgba(140,195,120,.38);
+    --font: 400 12px/22px Clarkson,"Proxima Nova","Open Sans","Helvetica Neue",Helvetica,Arial,sans-serif;
+  }
   html,body{margin:0;height:100%;background:#000;color:var(--ui-fg);font:var(--font)}
   #vizwrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}
   #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
-  .ui{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.75rem;
-      padding:.6rem .8rem;background:var(--ui-bg);color:var(--ui-fg);font:var(--font);
-      border-top-left-radius:10px;border-top-right-radius:10px;opacity:0;transform:translateY(8px);
-      transition:opacity .25s ease, transform .25s ease;pointer-events:none;}
+  .ui{
+    position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.75rem;
+    padding:.6rem .8rem;background:var(--ui-bg);color:var(--ui-fg);font:var(--font);
+    border-top-left-radius:10px;border-top-right-radius:10px;
+    opacity:0;transform:translateY(8px);
+    transition:opacity .25s ease, transform .25s ease;
+    pointer-events:none;
+  }
   #vizwrap:hover .ui{opacity:1;transform:none;pointer-events:auto}
+
   /* Starter overlay – shared cover for streaming tracks */
-.starter{
-  position:absolute;
-  inset:0;
-  z-index:20;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  gap:32px;
-  background:
-    linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.55)),
-    url('https://rkangeluk.github.io/psy-viz1/covers/psy_cover.jpeg')
-      center center / cover no-repeat;
-}
+  .starter{
+    position:absolute;
+    inset:0;
+    z-index:20;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:32px;
+    background:
+      linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.55)),
+      url('https://rkangeluk.github.io/psy-viz1/covers/psy_cover.jpeg')
+        center center / cover no-repeat;
+  }
 
-/* Track title for streaming version */
-.track-title{
-  font-size:clamp(26px, 3.4vw, 36px);
-  font-weight:400;
-  color:#ffffff;
-  text-shadow:0 2px 12px rgba(0,0,0,0.9);
-}
+  /* Track title for streaming version */
+  .track-title{
+    font-size:clamp(26px, 3.4vw, 36px);
+    font-weight:400;
+    color:#ffffff;
+    text-shadow:0 2px 12px rgba(0,0,0,0.9);
+  }
 
-/* Play button – slightly larger oval for streaming view */
-.play-oval{
-  all:unset;
-  cursor:pointer;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  width:140px;
-  height:50px;
-  padding:0 14px;
-  border-radius:9999px;
-  background:rgba(197,203,157,0.78);
-  border:2px solid #6e7f3d;
-  box-shadow:0 6px 22px rgba(0,0,0,0.35);
-}
+  /* Play button – slightly larger oval for streaming view */
+  .play-oval{
+    all:unset;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:140px;
+    height:50px;
+    padding:0 14px;
+    border-radius:9999px;
+    background:rgba(197,203,157,0.78);
+    border:2px solid #6e7f3d;
+    box-shadow:0 6px 22px rgba(0,0,0,0.35);
+  }
+  .play-oval svg{
+    width:20px;
+    height:20px;
+    fill:#486020;
+  }
 
-.play-oval svg{
-  width:20px;
-  height:20px;
-  fill:#486020;
-}
-
-  .btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-       width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)}
+  .btn{
+    all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+    width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)
+  }
   .btn:hover{background:rgba(0,0,0,.12)}
   .pill{all:unset;cursor:pointer;background:rgba(0,0,0,.06);padding:.35rem .6rem;border-radius:999px}
   .pill:hover{background:rgba(0,0,0,.12)}
   .label{opacity:.85;min-width:52px;text-align:right}
   .grow{flex:1}.spacer{width:8px}
-  input[type="range"]{-webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none}
-  input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
+  input[type="range"]{
+    -webkit-appearance:none;appearance:none;
+    height:4px;width:240px;background:rgba(0,0,0,.18);
+    border-radius:999px;outline:none
+  }
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;
+    background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)
+  }
   #probe{position:absolute;left:-9999px;top:-9999px;width:64px;height:64px}
 </style>
 </head>
@@ -88,15 +106,14 @@
       <div class="spacer"></div>
     </div>
 
-   <div id="starter" class="starter" role="dialog" aria-label="Click to start">
-  <div class="track-title">Esser lieto</div>
-  <button id="startBtn" class="play-oval" aria-label="Play" type="button">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8 5v14l11-7z"/>
-    </svg>
-  </button>
-</div>
-
+    <div id="starter" class="starter" role="dialog" aria-label="Click to start">
+      <div class="track-title">Esser lieto</div>
+      <button id="startBtn" class="play-oval" aria-label="Play" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8 5v14l11-7z"/>
+        </svg>
+      </button>
+    </div>
 
     <audio id="player" preload="auto" playsinline crossorigin="anonymous"></audio>
   </div>
@@ -105,8 +122,16 @@
   <script>
   function loadScriptPair(primary, fallback){
     return new Promise((resolve,reject)=>{
-      const s=document.createElement('script'); s.src=primary; s.async=false;
-      s.onload=resolve; s.onerror=()=>{ const f=document.createElement('script'); f.src=fallback; f.async=false; f.onload=resolve; f.onerror=()=>reject(new Error('CDN fail '+primary)); document.head.appendChild(f); };
+      const s=document.createElement('script');
+      s.src=primary; s.async=false;
+      s.onload=resolve;
+      s.onerror=()=>{
+        const f=document.createElement('script');
+        f.src=fallback; f.async=false;
+        f.onload=resolve;
+        f.onerror=()=>reject(new Error('CDN fail '+primary));
+        document.head.appendChild(f);
+      };
       document.head.appendChild(s);
     });
   }
@@ -136,50 +161,66 @@
   const BAN_PARAM  = P('ban','');
 
   /* DOM */
-  const wrap=document.getElementById('vizwrap'), canvas=document.getElementById('viz'), probe=document.getElementById('probe');
-  const starter=document.getElementById('starter'), startBtn=document.getElementById('startBtn');
-  const audio=document.getElementById('player'), btnPlay=document.getElementById('play'), btnNext=document.getElementById('next');
-  const rSeek=document.getElementById('seek'), rVol=document.getElementById('vol'), tTime=document.getElementById('time'), tDur=document.getElementById('dur');
+  const wrap   = document.getElementById('vizwrap');
+  const canvas = document.getElementById('viz');
+  const probe  = document.getElementById('probe');
+  const starter= document.getElementById('starter');
+  const startBtn = document.getElementById('startBtn');
+  const audio  = document.getElementById('player');
+  const btnPlay= document.getElementById('play');
+  const rSeek  = document.getElementById('seek');
+  const rVol   = document.getElementById('vol');
+  const tTime  = document.getElementById('time');
+  const tDur   = document.getElementById('dur');
+
   audio.src=AUDIO_FILE;
 
   /* helpers */
   const pad=s=>(s<10?'0':'')+s;
   const fmt=t=>(!isFinite(t)?'0:00':((t/60)|0)+':'+pad((t%60)|0));
   const MS_PER_BAR=(60000/BPM)*4, msForBars=b=>Math.round(MS_PER_BAR*b);
-  function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
+  function webglOK(){
+    const c=document.createElement('canvas');
+    return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl'));
+  }
   function seededShuffle(arr, seedStr){
-    let seed=0; for(let i=0;i<seedStr.length;i++) seed=(seed*31 + seedStr.charCodeAt(i))>>>0;
+    let seed=0;
+    for(let i=0;i<seedStr.length;i++) seed=(seed*31 + seedStr.charCodeAt(i))>>>0;
     function rnd(){ seed=(1664525*seed+1013904223)>>>0; return (seed & 0xfffffff)/0x10000000; }
-    const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a;
+    const a=arr.slice();
+    for(let i=a.length-1;i>0;i--){
+      const j=Math.floor(rnd()*(i+1));
+      [a[i],a[j]]=[a[j],a[i]];
+    }
+    return a;
   }
 
   /* state */
-  let ctx, viz, PRESETS={dict:{},names:[]}, keys=[], index=0;
-let changeTO=null, changeInterval=null, whiteWatch=null;
-let isPlaying = false;   // track whether audio is actively playing
+  let ctx, viz, PRESETS={dict:{},names:[]};
   let keys=[], index=0, phase='A', bloomArmed=true, started=false;
-  let nanoTO=null, microTO=null, macroTO=null; // grid-snapped timeouts
+  let nanoTO=null, microTO=null, macroTO=null;
   let whiteWatch=null;
+  let isPlaying=false;
   const SESSION_BLOCK = new Set();
 
   /* permanent blocks (your list) */
   const BLOCK_PATTERNS = [
-    /flexi/i,                           // any Flexi
-    /spiral\s*artifact/i,               // Spiral Artifact
-    /geiss.*spiral|spiral.*geiss/i,     // Geiss + Spiral mashups
-    /rovastar/i,                        // any Rovastar
-    /loadus/i,                          // any Loadus
-    /Geiss - Desert Rose/i              // known glitchy
+    /flexi/i,
+    /spiral\s*artifact/i,
+    /geiss.*spiral|spiral.*geiss/i,
+    /rovastar/i,
+    /loadus/i,
+    /Geiss - Desert Rose/i
   ];
   const USER_BLOCK = new Set(BAN_PARAM?BAN_PARAM.split(',').map(s=>s.trim()).filter(Boolean):[]);
 
   /* packs */
   function mergePresetPacks(){
     const libs=[];
-    if (window.butterchurnPresets) libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
+    if (window.butterchurnPresets)           libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
     if (window.butterchurnPresetsNonMinimal) libs.push((butterchurnPresetsNonMinimal.default||butterchurnPresetsNonMinimal).getPresets());
-    if (window.butterchurnPresetsExtra) libs.push((butterchurnPresetsExtra.default||butterchurnPresetsExtra).getPresets());
-    if (window.butterchurnPresetsExtra2) libs.push((butterchurnPresetsExtra2.default||butterchurnPresetsExtra2).getPresets());
+    if (window.butterchurnPresetsExtra)      libs.push((butterchurnPresetsExtra.default||butterchurnPresetsExtra).getPresets());
+    if (window.butterchurnPresetsExtra2)     libs.push((butterchurnPresetsExtra2.default||butterchurnPresetsExtra2).getPresets());
     const dict=Object.assign({},...libs), names=Object.keys(dict);
     return {dict,names};
   }
@@ -198,13 +239,18 @@ let isPlaying = false;   // track whether audio is actively playing
   }
 
   /* sizing */
-  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; if(viz) viz.setRendererSize(r.width,r.height); }
+  function size(){
+    const r=wrap.getBoundingClientRect();
+    canvas.width=r.width; canvas.height=r.height;
+    if(viz) viz.setRendererSize(r.width,r.height);
+  }
 
-  /* mutation – texture-sensitive (more mid/treble) */
+  /* mutation – texture-sensitive */
   function mutatePreset(base, tMs, intensity=1){
     const p=JSON.parse(JSON.stringify(base));
     p.ob_a=0; p.ib_a=0;
-    const s = Math.sin(tMs*0.00033)*0.5+0.5, s2= Math.sin(tMs*0.00019+1.2)*0.5+0.5;
+    const s  = Math.sin(tMs*0.00033)*0.5+0.5;
+    const s2 = Math.sin(tMs*0.00019+1.2)*0.5+0.5;
     p.decay = Math.min(0.996, 0.986 + 0.012*s*0.7*intensity);
     p.gamma = 1.05 + 0.17*s2*0.7*intensity;
     p.per_frame = (p.per_frame||"") +
@@ -218,7 +264,7 @@ let isPlaying = false;   // track whether audio is actively playing
     return p;
   }
 
-  /* load + watchdog (no UI peeks) */
+  /* load + watchdog */
   function tryLoadName(name, blend){
     try{
       const base=PRESETS.dict[name]; if(!base) throw new Error('missing '+name);
@@ -255,127 +301,149 @@ let isPlaying = false;   // track whether audio is actively playing
       try{
         pctx.drawImage(canvas, 0,0, probe.width, probe.height);
         const {data} = pctx.getImageData(0,0, probe.width, probe.height);
-        let sum=0, n=0; for (let i=0;i<data.length;i+=4){ const r=data[i]/255, g=data[i+1]/255, b=data[i+2]/255; sum += 0.2126*r + 0.7152*g + 0.0722*b; n++; }
+        let sum=0, n=0;
+        for (let i=0;i<data.length;i+=4){
+          const r=data[i]/255, g=data[i+1]/255, b=data[i+2]/255;
+          sum += 0.2126*r + 0.7152*g + 0.0722*b; n++;
+        }
         const avg = sum/n;
         if (avg > 0.97) brightCount++; else brightCount=0;
-        if (brightCount >= 3){ SESSION_BLOCK.add(presetName); loadByIndex(index+1, 1.6); brightCount=0; }
+        if (brightCount >= 3){
+          SESSION_BLOCK.add(presetName);
+          loadByIndex(index+1, 1.6);
+          brightCount=0;
+        }
       }catch(e){ clearInterval(whiteWatch); whiteWatch=null; }
     }, 2000);
   }
 
   /* grid-snapped (nano=2, micro=4, macro=16) */
-  function clearGridTimers(){ if(nanoTO){clearTimeout(nanoTO);} if(microTO){clearTimeout(microTO);} if(macroTO){clearTimeout(macroTO);} nanoTO=microTO=macroTO=null; }
+  function clearGridTimers(){
+    if(nanoTO){clearTimeout(nanoTO);}
+    if(microTO){clearTimeout(microTO);}
+    if(macroTO){clearTimeout(macroTO);}
+    nanoTO=microTO=macroTO=null;
+  }
   function barsElapsed(){ return (audio.currentTime*1000)/MS_PER_BAR; }
-  function msUntilNextBoundary(spanBars){ const b = barsElapsed(); const next = Math.ceil(b / spanBars) * spanBars; return Math.max(0, Math.round((next - b) * MS_PER_BAR)); }
+  function msUntilNextBoundary(spanBars){
+    const b = barsElapsed();
+    const next = Math.ceil(b / spanBars) * spanBars;
+    return Math.max(0, Math.round((next - b) * MS_PER_BAR));
+  }
   function scheduleOnGrid(){
     clearGridTimers();
     const nanoSpan=2;
-    nanoTO = setTimeout(function tick(){ loadByIndex(index, 0.6); nanoTO=setTimeout(tick, msForBars(nanoSpan)); }, msUntilNextBoundary(nanoSpan));
-    microTO= setTimeout(function tick(){ loadByIndex(index, 1.0); microTO=setTimeout(tick, msForBars(MICRO)); }, msUntilNextBoundary(MICRO));
-    macroTO= setTimeout(function tick(){ loadByIndex(index+1, 2.2); macroTO=setTimeout(tick, msForBars(MACRO)); }, msUntilNextBoundary(MACRO));
+    nanoTO = setTimeout(function tick(){
+      loadByIndex(index, 0.6);
+      nanoTO=setTimeout(tick, msForBars(nanoSpan));
+    }, msUntilNextBoundary(nanoSpan));
+
+    microTO= setTimeout(function tick(){
+      loadByIndex(index, 1.0);
+      microTO=setTimeout(tick, msForBars(MICRO));
+    }, msUntilNextBoundary(MICRO));
+
+    macroTO= setTimeout(function tick(){
+      loadByIndex(index+1, 2.2);
+      macroTO=setTimeout(tick, msForBars(MACRO));
+    }, msUntilNextBoundary(MACRO));
   }
 
   /* boot (no visuals until play) */
-  function size(){ const r=wrap.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; if(viz) viz.setRendererSize(r.width,r.height); }
   async function bootCore(){
     if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return false; }
-    const ok = await new Promise(r=>{ const t=setInterval(()=>{ if(window.butterchurn) { clearInterval(t); r(true); } }, 50); setTimeout(()=>{ clearInterval(t); r(true); }, 8000); });
+    const ok = await new Promise(r=>{
+      const t=setInterval(()=>{
+        if(window.butterchurn) { clearInterval(t); r(true); }
+      }, 50);
+      setTimeout(()=>{ clearInterval(t); r(true); }, 8000);
+    });
     const BC=(window.butterchurn && (butterchurn.createVisualizer?butterchurn:butterchurn.default))||null;
     const merged=mergePresetPacks();
     if (!BC || !merged.names.length){ alert('Preset libraries failed to load.'); return false; }
 
     PRESETS=merged;
     ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
-    src=ctx.createMediaElementSource(audio);
+    const src=ctx.createMediaElementSource(audio);
     viz=BC.createVisualizer(ctx, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
-    const g=ctx.createGain(); g.gain.value=+rVol.value; src.connect(ctx.destination); src.connect(g); viz.connectAudio(g);
+    const g=ctx.createGain(); g.gain.value=+rVol.value;
+    src.connect(ctx.destination); src.connect(g); viz.connectAudio(g);
     size(); addEventListener('resize', size, {passive:true});
     return true;
   }
 
- /* start (robust; no alerts on Chrome quirk) */
-window._vizStart = async function(){
-  try{
-    if (!ctx){ 
-      const ok = await bootCore(); 
-      if (!ok) return; 
+  /* start (robust; no alerts on Chrome quirk) */
+  window._vizStart = async function(){
+    try{
+      if (!ctx){
+        const ok = await bootCore();
+        if (!ok) return;
+      }
+      if (ctx.state === 'suspended') await ctx.resume();
+      if (audio.paused){
+        try{ await audio.play(); } catch(e){ /* ignore benign Chrome errors */ }
+      }
+
+      if (!started){
+        keys  = buildPack();
+        index = Math.min(1, Math.max(0, keys.length-1));
+        phase = 'A';
+        bloomArmed = true;
+        started = true;
+        isPlaying = true;
+
+        (function loop(){
+          if (started && viz && isPlaying){
+            viz.render();
+          }
+          requestAnimationFrame(loop);
+        })();
+
+        loadByIndex(index, 0.0);
+        scheduleOnGrid();
+
+        let lastT=0;
+        audio.addEventListener('timeupdate', ()=>{
+          const t=audio.currentTime||0;
+          if (audio.duration){
+            rSeek.value       = t / audio.duration;
+            tTime.textContent = fmt(t);
+            tDur.textContent  = fmt(audio.duration);
+          }
+          if (bloomArmed && t*1000 >= msForBars(BLOOM_BAR)){
+            phase='B'; bloomArmed=false; loadByIndex(index, 1.2);
+          }
+          if (t<1 && lastT>5){
+            keys=buildPack(); index=Math.min(1, keys.length-1);
+            phase='A'; bloomArmed=true;
+            loadByIndex(index, 0.0); scheduleOnGrid();
+          }
+          lastT=t;
+        }, {passive:true});
+      } else {
+        isPlaying = true;
+      }
+
+      starter.style.display='none';
+      btnPlay.textContent='⏸';
+    }catch(e){
+      // keep quiet
     }
-    if (ctx.state === 'suspended') await ctx.resume();
-    if (audio.paused) { 
-      try{ 
-        await audio.play(); 
-      } catch(e){ /* swallow Chrome's benign errors */ } 
-    }
+  };
 
-    if (!started){
-      keys  = buildPack(); 
-      index = Math.min(1, Math.max(0, keys.length-1));
-      phase = 'A'; 
-      bloomArmed = true; 
-      started = true;
-      isPlaying = true;       // NEW: visuals should run
+  // keep visuals in sync with audio state
+  audio.addEventListener('play', () => {
+    isPlaying = true;
+  });
+  audio.addEventListener('pause', () => {
+    isPlaying = false;
+  });
+  audio.addEventListener('ended', () => {
+    isPlaying = false;
+    btnPlay.textContent = '▶';
+  });
 
-      // Render loop now checks isPlaying as well
-      (function loop(){ 
-        if (started && viz && isPlaying){ 
-          viz.render(); 
-        } 
-        requestAnimationFrame(loop); 
-      })();
-
-      loadByIndex(index, 0.0);
-      scheduleOnGrid();
-
-      let lastT = 0;
-      audio.addEventListener('timeupdate', ()=>{
-        const t = audio.currentTime || 0;
-        if (audio.duration){
-          rSeek.value      = t / audio.duration;
-          tTime.textContent= fmt(t);
-          tDur.textContent = fmt(audio.duration);
-        }
-        if (bloomArmed && t*1000 >= msForBars(BLOOM_BAR)){
-          phase = 'B'; 
-          bloomArmed = false; 
-          loadByIndex(index, 1.2);
-        }
-        if (t < 1 && lastT > 5){
-          keys  = buildPack(); 
-          index = Math.min(1, keys.length-1); 
-          phase = 'A'; 
-          bloomArmed = true; 
-          loadByIndex(index, 0.0); 
-          scheduleOnGrid();
-        }
-        lastT = t;
-      }, {passive:true});
-    } else {
-      // already started; make sure visuals resume if user re-triggers
-      isPlaying = true;
-    }
-
-    starter.style.display='none';
-    btnPlay.textContent='⏸';
-  }catch(e){
-    /* no alerts; keep quiet if Chrome spuriously complains */
-  }
-};
-// Keep visuals in sync with audio state
-audio.addEventListener('play', () => {
-  isPlaying = true;
-});
-
-audio.addEventListener('pause', () => {
-  isPlaying = false;
-});
-
-audio.addEventListener('ended', () => {
-  isPlaying = false;
-  btnPlay.textContent = '▶';   // reset button when track finishes
-});
-
-
-  // wide bindings for Safari/Chrome
+  // wide bindings for Safari/Chrome + starter button
   ['pointerdown','touchstart','mousedown'].forEach(ev=>{
     document.addEventListener(ev, ()=>{ if(!started){ window._vizStart(); } }, {once:true, passive:true});
     canvas.addEventListener(ev, ()=>{ if(!started){ window._vizStart(); } }, {passive:true});
@@ -384,30 +452,28 @@ audio.addEventListener('ended', () => {
   startBtn.addEventListener('click', ()=> window._vizStart());
 
   // controls
-  // controls
-btnPlay.addEventListener('click', async ()=>{
-  try{
-    if (!ctx) { 
-      await window._vizStart(); 
-      return; 
-    }
-    if (audio.paused){
-      try{ 
-        await audio.play(); 
-      }catch(e){}
-      // `play` event will flip isPlaying and we already set the icon there/above
-      btnPlay.textContent = '⏸';
-    } else {
-      audio.pause();
-      // `pause` event will flip isPlaying; icon set here for instant feedback
-      btnPlay.textContent = '▶';
-    }
-  }catch(e){}
-});
+  btnPlay.addEventListener('click', async ()=>{
+    try{
+      if (!ctx){
+        await window._vizStart();
+        return;
+      }
+      if (audio.paused){
+        try{ await audio.play(); }catch(e){}
+        btnPlay.textContent = '⏸';
+      } else {
+        audio.pause();
+        btnPlay.textContent = '▶';
+      }
+    }catch(e){}
+  });
 
-  btnNext.addEventListener('click', ()=> loadByIndex(index+1, 1.6));
-  rSeek.addEventListener('input', e=>{ if(audio.duration) audio.currentTime = e.target.value * audio.duration; });
-  rVol.addEventListener('input', e=>{ audio.volume = +e.target.value; });
+  rSeek.addEventListener('input', e=>{
+    if(audio.duration) audio.currentTime = e.target.value * audio.duration;
+  });
+  rVol.addEventListener('input', e=>{
+    audio.volume = +e.target.value;
+  });
   </script>
 </body>
 </html>
