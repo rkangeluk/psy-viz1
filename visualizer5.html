@@ -24,17 +24,52 @@
   }
   #vizwrap:hover .ui, #vizwrap.show-ui .ui{opacity:1;transform:none;pointer-events:auto}
 
-  /* Start overlay */
-  .starter{
-    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45));
-  }
-  .play-oval{
-    all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
-    width:112px;height:72px;border-radius:9999px;background:var(--play-oval);
-    box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18)
-  }
-  .play-oval svg{width:24px;height:24px;fill:#fff}
+ /* Starter overlay – shared cover for streaming tracks */
+.starter{
+  position:absolute;
+  inset:0;
+  z-index:20;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:32px;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.55)),
+    url('https://rkangeluk.github.io/psy-viz1/covers/psy_cover.jpeg')
+      center center / cover no-repeat;
+}
+
+/* Track title for streaming version */
+.track-title{
+  font-size:clamp(26px, 3.4vw, 36px);
+  font-weight:400;
+  color:#ffffff;
+  text-shadow:0 2px 12px rgba(0,0,0,0.9);
+}
+
+/* Play button – slightly larger oval for streaming view */
+.play-oval{
+  all:unset;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:140px;
+  height:50px;
+  padding:0 14px;
+  border-radius:9999px;
+  background:rgba(197,203,157,0.78);
+  border:2px solid #6e7f3d;
+  box-shadow:0 6px 22px rgba(0,0,0,0.35);
+}
+
+.play-oval svg{
+  width:20px;
+  height:20px;
+  fill:#486020;
+}
+
 
   /* Buttons/sliders */
   .btn{
@@ -68,11 +103,15 @@
       <button id="next" class="pill" aria-label="Next preset">Next</button>
     </div>
 
-    <div id="starter" class="starter" role="dialog" aria-label="Click to start">
-      <button id="startBtn" class="play-oval" aria-label="Play">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
-      </button>
-    </div>
+   <div id="starter" class="starter" role="dialog" aria-label="Click to start">
+  <div class="track-title">Butter Fingers</div>
+  <button id="startBtn" class="play-oval" aria-label="Play" type="button">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 5v14l11-7z"/>
+    </svg>
+  </button>
+</div>
+
 
     <!-- Absolute URL to track5.mp3 -->
     <audio id="player" preload="auto" crossorigin="anonymous">
@@ -120,8 +159,10 @@
   const BARS_PER_CHANGE = 32;
   const MS_PER_BAR = (60000 / BPM) * 4;
 
-  let ctx, viz, PRESETS={dict:{},names:[]}, keys=[], index=0;
-  let changeTO=null, changeInterval=null, whiteWatch=null;
+ let ctx, viz, PRESETS={dict:{},names:[]}, keys=[], index=0;
+let changeTO=null, changeInterval=null, whiteWatch=null;
+let isPlaying = false;   // track whether audio is actively playing
+
 
   const BLOCKLIST = new Set([
     'Geiss - Desert Rose',
@@ -165,17 +206,19 @@
   }
 
   function loadByName(name, blend=1.4){
-    const base = PRESETS.dict[name];
-    if (!base) return false;
-    try{
-      viz.loadPreset(styleForTrack(base), blend);
-      armWhiteWatch(name);
-      return true;
-    }catch(e){
-      console.warn('Preset failed:', name, e);
-      return false;
-    }
+  const base = PRESETS.dict[name];
+  if (!base) return false;
+  try{
+    viz.loadPreset(styleForTrack(base), blend);
+    console.log('[Butterchurn] Loaded preset:', name);
+    armWhiteWatch(name);
+    return true;
+  }catch(e){
+    console.warn('Preset failed:', name, e);
+    return false;
   }
+}
+
 
   function loadByIndex(i, blend=1.2){
     if (!keys.length) keys = buildPack();
@@ -257,21 +300,47 @@
     ctx = ctxLocal;
 
     size(); addEventListener('resize', size, {passive:true});
-    (function loop(){ viz && viz.render(); requestAnimationFrame(loop); })();
+    (function loop(){
+  if (viz && isPlaying) {
+    viz.render();
+  }
+  requestAnimationFrame(loop);
+})();
+
 
     rVol.addEventListener('input', e=> audio.volume = +e.target.value, {passive:true});
-    rSeek.addEventListener('input', e=>{ if(audio.duration) audio.currentTime = e.target.value * audio.duration; }, {passive:true});
-    audio.addEventListener('timeupdate', ()=>{
-      const t=audio.currentTime||0; tTime.textContent=fmt(t);
-      if (audio.duration){ tDur.textContent=fmt(audio.duration); rSeek.value = t / audio.duration; }
-    });
+rSeek.addEventListener('input', e=>{ if(audio.duration) audio.currentTime = e.target.value * audio.duration; }, {passive:true});
 
-    audio.addEventListener('loadedmetadata', scheduleCadence);
-    audio.addEventListener('seeked', scheduleCadence);
-    audio.addEventListener('play', scheduleCadence);
-
-    return true;
+audio.addEventListener('timeupdate', ()=>{
+  const t = audio.currentTime || 0;
+  tTime.textContent = fmt(t);
+  if (audio.duration){
+    tDur.textContent = fmt(audio.duration);
+    rSeek.value = t / audio.duration;
   }
+});
+
+audio.addEventListener('loadedmetadata', scheduleCadence);
+audio.addEventListener('seeked', scheduleCadence);
+
+audio.addEventListener('play', ()=>{
+  isPlaying = true;       // visuals run
+  scheduleCadence();
+});
+
+audio.addEventListener('pause', ()=>{
+  isPlaying = false;      // visuals freeze
+});
+
+audio.addEventListener('ended', ()=>{
+  isPlaying = false;      // visuals freeze at final frame
+  clearCadenceTimers();   // stop preset changes
+  btnPlay.textContent = '▶';
+});
+
+return true;
+}
+
 
   async function startPlayback(){
     try{
