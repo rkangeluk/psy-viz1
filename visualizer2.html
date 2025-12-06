@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualizer – Track 2 (133 BPM, 32→16 bars)</title>
+<title>Visualizer – Mea culpa (133 BPM, 32→16 bars)</title>
 <style>
   :root{
     --ui-bg: rgba(255,255,255,.88);
@@ -22,8 +22,19 @@
     transition:opacity .25s ease, transform .25s ease;pointer-events:none;
   }
   #vizwrap:hover .ui{opacity:1;transform:none;pointer-events:auto}
-  .starter{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(180deg,rgba(0,0,0,.30),rgba(0,0,0,.45))}
+  .starter{
+    position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:1.5rem;padding:1.5rem;text-align:center;color:#fff;
+    background:
+      linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.85)),
+      url('https://rkangeluk.github.io/psy-viz1/covers/psy_cover.jpeg') center/cover no-repeat;
+  }
+  .track-title{
+    font-size:24px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    font-weight:500;
+  }
   .play-oval{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;
     width:112px;height:72px;border-radius:9999px;background:var(--play-oval);
     box-shadow:0 6px 22px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.18)}
@@ -55,11 +66,10 @@
       <span id="dur" class="label">0:00</span>
       <div class="spacer"></div>
       <input id="vol" type="range" min="0" max="1" step="0.01" value="0.9" style="width:110px" aria-label="Volume"/>
-      <div class="spacer"></div>
-      <button id="next" class="pill" aria-label="Next preset">Next</button>
     </div>
 
     <div id="starter" class="starter" role="dialog" aria-label="Click to start">
+      <div class="track-title">Mea culpa</div>
       <!-- Inline onclick: most reliable first-gesture path -->
       <button id="startBtn" class="play-oval" aria-label="Play"
               onclick="window._vizStart && window._vizStart()">
@@ -125,7 +135,6 @@
   const starter= document.getElementById('starter');
   const audio  = document.getElementById('player');
   const btnPlay= document.getElementById('play');
-  const btnNext= document.getElementById('next');
   const rSeek  = document.getElementById('seek');
   const rVol   = document.getElementById('vol');
   const tTime  = document.getElementById('time');
@@ -136,6 +145,7 @@
   let keys = [], index = 0, timer = null;
   let phase = 'A'; // A=32 bars, B=16 bars
   let whiteWatch = null;
+  let isPlaying = false;
   const SESSION_BLOCK = new Set();
 
   // Build curated first; fallback to all
@@ -161,7 +171,7 @@
     if (viz) viz.setRendererSize(r.width, r.height);
   }
 
-  // **FIX 1: no UI flash on transitions** (no .show-ui toggling)
+  // Load by index with no UI flash
   function loadByIndex(i, blend=1.4){
     const all = PRESETS.getPresets();
     if (!keys.length) chooseKeys();
@@ -223,13 +233,13 @@
   }
 
   async function boot(){
-    if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return; }
+    if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return false; }
     // wait for libs (up to ~8s)
     await new Promise(res=>{
       let t=0; const h=setInterval(()=>{ if (window._libsReady){ clearInterval(h); res(); } if (++t>80){ clearInterval(h); res(); } }, 100);
     });
     BC = getBC(); PRESETS = getPresetsLib();
-    if (!BC || !PRESETS) { alert('Libraries failed to load.'); return; }
+    if (!BC || !PRESETS) { alert('Libraries failed to load.'); return false; }
 
     if (!ctx){
       ctx = new (window.AudioContext || window.webkitAudioContext)({latencyHint:'interactive'});
@@ -243,7 +253,13 @@
       chooseKeys();
       loadByIndex(0, 0);
 
-      function loop(){ viz.render(); requestAnimationFrame(loop); }
+      // Render loop gated by isPlaying
+      function loop(){
+        if (viz && isPlaying) {
+          viz.render();
+        }
+        requestAnimationFrame(loop);
+      }
       requestAnimationFrame(loop);
 
       size(); window.addEventListener('resize', size, {passive:true});
@@ -266,16 +282,20 @@
       }, {passive:true});
     }
     if (ctx.state === 'suspended') await ctx.resume();
+    return true;
   }
 
   // —— Controls / robust start ——
   async function startPlayback(){
     try{
-      if (!ctx){ const ok = await boot(); if (ok===false) return; }
+      if (!ctx){
+        const ok = await boot();
+        if (ok === false) return;
+      }
       if (ctx.state === 'suspended') await ctx.resume();
       await audio.play();
+      isPlaying = true;
       starter.style.display='none';
-      btnPlay.textContent='⏸';
     }catch(e){ console.warn('Start/play warning:', e); }
   }
 
@@ -294,11 +314,25 @@
   btnPlay.addEventListener('click', async ()=>{
     try{
       if (!ctx) await startPlayback();
-      if (audio.paused){ await audio.play(); btnPlay.textContent='⏸'; }
-      else { audio.pause(); btnPlay.textContent='▶'; }
+      else if (audio.paused){ await audio.play(); }
+      else { audio.pause(); }
     }catch(e){ console.warn(e); }
   });
-  btnNext.addEventListener('click', ()=> loadByIndex(index+1, 1.2));
+
+  // Gate visuals + button glyph off audio state
+  audio.addEventListener('play', ()=>{
+    isPlaying = true;
+    btnPlay.textContent = '⏸';
+  });
+  audio.addEventListener('pause', ()=>{
+    isPlaying = false;
+    btnPlay.textContent = '▶';
+  });
+  audio.addEventListener('ended', ()=>{
+    isPlaying = false;
+    btnPlay.textContent = '▶';
+  });
+
   audio.addEventListener('timeupdate', ()=>{
     if (audio.duration){
       const p = audio.currentTime / audio.duration;
@@ -307,6 +341,7 @@
       tDur.textContent  = fmt(audio.duration);
     }
   }, {passive:true});
+
   rSeek.addEventListener('input', e=>{ if (audio.duration) audio.currentTime = e.target.value * audio.duration; });
   rVol.addEventListener('input', e=>{ audio.volume = +e.target.value; });
   </script>
