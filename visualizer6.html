@@ -1,0 +1,392 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Visualizer – 1400 days (Vocal led, 130 BPM, 32-bar cadence)</title>
+<style>
+  :root{
+    --ui-bg: rgba(255,255,255,.88);
+    --ui-fg: #3e3e3e;
+    --play-oval: rgba(140, 195, 120, .38);
+    --font: 400 12px/22px Clarkson, "Proxima Nova", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  html,body{margin:0;height:100%;background:#000;color:var(--ui-fg);font:var(--font)}
+  #vizwrap{position:relative;width:100%;height:100vh;background:#000;åoverflow:hidden}
+  #viz{position:absolute;inset:0;display:block;width:100%;height:100%}
+
+  /* Hover UI */
+  .ui{
+    position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.75rem;
+    padding:.6rem .8rem;background:var(--ui-bg);color:var(--ui-fg);font:var(--font);
+    border-top-left-radius:10px;border-top-right-radius:10px;opacity:0;transform:translateY(8px);
+    transition:opacity .25s ease, transform .25s ease;pointer-events:none;
+  }
+  #vizwrap:hover .ui, #vizwrap.show-ui .ui{opacity:1;transform:none;pointer-events:auto}
+
+ /* Starter overlay – shared cover for streaming tracks */
+.starter{
+  position:absolute;
+  inset:0;
+  z-index:20;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:32px;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.55)),
+    url('https://rkangeluk.github.io/psy-viz1/covers/psy_cover.jpeg')
+      center center / cover no-repeat;
+}
+
+/* Track title for streaming version */
+.track-title{
+  font-size:clamp(26px, 3.4vw, 36px);
+  font-weight:400;
+  color:#ffffff;
+  text-shadow:0 2px 12px rgba(0,0,0,0.9);
+}
+ 
+
+/* Play button – slightly larger oval for streaming view */
+.play-oval{
+  all:unset;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:140px;
+  height:50px;
+  padding:0 14px;
+  border-radius:9999px;
+  background:rgba(197,203,157,0.78);
+  border:2px solid #6e7f3d;
+  box-shadow:0 6px 22px rgba(0,0,0,0.35);
+}
+
+.play-oval svg{
+  width:20px;
+  height:20px;
+  fill:#486020;
+}
+
+
+  /* Buttons/sliders */
+  .btn{
+    all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+    width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,.06);color:var(--ui-fg)
+  }
+  .btn:hover{background:rgba(0,0,0,.12)}
+  .pill{all:unset;cursor:pointer;background:rgba(0,0,0,.06);padding:.35rem .6rem;border-radius:999px}
+  .pill:hover{background:rgba(0,0,0,.12)}
+  .label{opacity:.85;min-width:52px;text-align:right}
+  .grow{flex:1}.spacer{width:8px}
+  input[type="range"]{-webkit-appearance:none;appearance:none;height:4px;width:240px;background:rgba(0,0,0,.18);border-radius:999px;outline:none}
+  input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#3e3e3e;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
+
+  /* Hidden probe for white-out watchdog */
+  #probe{position:absolute;left:-9999px;top:-9999px;width:64px;height:64px}
+</style>
+</head>
+<body>
+  <div id="vizwrap" aria-label="Audio visualizer">
+    <canvas id="viz"></canvas>
+
+   <div class="ui" role="group" aria-label="Player controls">
+  <button id="play" class="btn" aria-label="Play/Pause">▶</button>
+  <span id="time" class="label">0:00</span>
+  <input id="seek" type="range" min="0" max="1" step="0.001" value="0" class="grow" aria-label="Seek"/>
+  <span id="dur" class="label">0:00</span>
+  <div class="spacer"></div>
+  <input id="vol" type="range" min="0" max="1" step="0.01" value="0.9" style="width:110px" aria-label="Volume"/>
+  <div class="spacer"></div>
+     </div>
+
+
+   <div id="starter" class="starter" role="dialog" aria-label="Click to start">
+  <div class="track-title">1400 days</div>
+  <button id="startBtn" class="play-oval" aria-label="Play" type="button">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 5v14l11-7z"/>
+    </svg>
+  </button>
+</div>
+
+
+    <!-- Absolute URL to 1400 days.mp3 -->
+    <audio id="player" preload="auto" crossorigin="anonymous">
+      <source src="https://rkangeluk.github.io/psy-viz1/1400%20days.mp3" type="audio/mpeg">
+    </audio>
+
+    <canvas id="probe" width="64" height="64" aria-hidden="true"></canvas>
+  </div>
+
+  <!-- Butterchurn libs -->
+  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
+  <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsNonMinimal.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra2.min.js"></script>
+
+  <script>
+  /* ===== helpers ===== */
+  const pad = s => (s<10?'0':'')+s;
+  const fmt = t => (!isFinite(t)?'0:00': ((t/60)|0)+':'+pad((t%60)|0));
+  function webglOK(){ const c=document.createElement('canvas'); return !!(c.getContext('webgl2')||c.getContext('webgl')||c.getContext('experimental-webgl')); }
+  function seededShuffle(arr, seedStr){
+    let seed=0; for(let i=0;i<seedStr.length;i++) seed=(seed*31 + seedStr.charCodeAt(i))>>>0;
+    function rnd(){ seed=(1664525*seed+1013904223)>>>0; return (seed & 0xfffffff)/0x10000000; }
+    const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a;
+  }
+
+  /* ===== DOM ===== */
+  const wrap   = document.getElementById('vizwrap');
+  const canvas = document.getElementById('viz');
+  const starter= document.getElementById('starter');
+  const startBtn= document.getElementById('startBtn');
+  const audio  = document.getElementById('player');
+  const btnPlay= document.getElementById('play');
+  const rSeek  = document.getElementById('seek');
+  const rVol   = document.getElementById('vol');
+  const tTime  = document.getElementById('time');
+  const tDur   = document.getElementById('dur');
+  const probe  = document.getElementById('probe').getContext('2d', {willReadFrequently:true});
+
+  /* ===== state ===== */
+  const BPM = 130;
+  const BARS_PER_CHANGE = 32;
+  const MS_PER_BAR = (60000 / BPM) * 4;
+
+ let ctx, viz, PRESETS={dict:{},names:[]}, keys=[], index=0;
+let changeTO=null, changeInterval=null, whiteWatch=null;
+let isPlaying = false;   // track whether audio is actively playing
+
+
+  const BLOCKLIST = new Set([
+  'Geiss - Desert Rose',
+  'Flexi, geiss, martin + geiss - big spherical harmonics',
+  'Yin - Whitewash',
+  'martin - shifter - armorial bearings of'
+]);
+
+
+  function size(){
+    const r = wrap.getBoundingClientRect();
+    canvas.width = r.width; canvas.height = r.height;
+    viz && viz.setRendererSize(r.width, r.height);
+  }
+
+  function mergePresetPacks(){
+    const libs=[];
+    if (window.butterchurnPresets) libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
+    if (window.butterchurnPresetsNonMinimal) libs.push((butterchurnPresetsNonMinimal.default||butterchurnPresetsNonMinimal).getPresets());
+    if (window.butterchurnPresetsExtra) libs.push((butterchurnPresetsExtra.default||butterchurnPresetsExtra).getPresets());
+    if (window.butterchurnPresetsExtra2) libs.push((butterchurnPresetsExtra2.default||butterchurnPresetsExtra2).getPresets());
+    const dict=Object.assign({},...libs), names=Object.keys(dict);
+    return {dict,names};
+  }
+
+  function buildPack(){
+  const BAD_WORDS = /(martin\s?-\s?shifter|armorial)/i;
+
+  // remove blacklisted AND regex-bad presets from the start
+  let pool = PRESETS.names.filter(n => !BLOCKLIST.has(n) && !BAD_WORDS.test(n));
+
+  // vibe filter (optional)
+  const re = /(tunnel|spiral|kaleid|kaleidos|vortex|wormhole|fractal|nebula|grid|lines|rings|radial|reaction|diffusion|shards|cells|liquid|plasma|mono|minimal)/i;
+  pool = pool.filter(n => re.test(n) || pool.length < 14);
+
+  return seededShuffle(pool, 'vocal-130-1400days-v1');
+}
+
+
+  function styleForTrack(base){
+    const p = JSON.parse(JSON.stringify(base));
+    p.ob_a=0; p.ib_a=0;                     // tidy borders
+    p.gamma = (typeof p.gamma==='number'?p.gamma:1.18);
+    p.decay = Math.min(0.992,(typeof p.decay==='number'?p.decay:0.985));
+    p.per_frame = (p.per_frame||"") +
+      "qB=0.85*qB+0.15*bass_att; zoom=zoom*(1.0+0.012*qB); rot=rot+0.0010*(qB-0.5);";
+    return p;
+  }
+
+  function loadByName(name, blend = 1.4){
+  const base = PRESETS.dict[name];
+  if (!base) return false;
+
+  try {
+    viz.loadPreset(styleForTrack(base), blend);
+    console.log('[Butterchurn] Loaded preset:', name);
+    armWhiteWatch(name);
+    return true;
+
+  } catch (e) {
+    console.warn('Preset failed:', name, e);
+    return false;
+  }
+}
+
+
+
+  function loadByIndex(i, blend=1.2){
+    if (!keys.length) keys = buildPack();
+    index = ((i%keys.length)+keys.length)%keys.length;
+    let tries=0;
+    while(tries<Math.min(8,keys.length) && !loadByName(keys[index], blend)){
+      index=(index+1)%keys.length; tries++;
+    }
+  }
+
+  /* ===== cadence (bar-aligned) ===== */
+  function clearCadenceTimers(){
+    if (changeTO){ clearTimeout(changeTO); changeTO=null; }
+    if (changeInterval){ clearInterval(changeInterval); changeInterval=null; }
+  }
+  function scheduleCadence(){
+    clearCadenceTimers();
+    if (!audio.duration || !isFinite(audio.currentTime)) return;
+
+    const curBar = ((audio.currentTime * 1000) / MS_PER_BAR) + 1;  // 1-based
+    const nextBoundary = (Math.floor((curBar-1)/BARS_PER_CHANGE)+1)*BARS_PER_CHANGE + 1; // 33, 65, ...
+    const firstDelay = Math.round(Math.max(0, (nextBoundary - curBar) * MS_PER_BAR));
+
+    changeTO = setTimeout(()=>{
+      loadByIndex(index+1, 1.2);
+      changeInterval = setInterval(()=> loadByIndex(index+1, 1.2),
+                                   Math.round(MS_PER_BAR * BARS_PER_CHANGE));
+    }, firstDelay);
+  }
+
+  /* ===== white-out watchdog ===== */
+  function armWhiteWatch(presetName){
+    if (whiteWatch){ clearInterval(whiteWatch); whiteWatch=null; }
+    if (!probe) return;
+    let bright=0;
+    whiteWatch = setInterval(()=>{
+      try{
+        probe.drawImage(canvas,0,0,64,64);
+        const d = probe.getImageData(0,0,64,64).data;
+        let sum=0, n=0;
+        for (let i=0;i<d.length;i+=4){
+          const r=d[i]/255, g=d[i+1]/255, b=d[i+2]/255;
+          sum += 0.2126*r + 0.7152*g + 0.0722*b; n++;
+        }
+        const avg = sum/n;
+        bright = (avg>0.97)? (bright+1) : 0;
+        if (bright>=3){
+          console.log('White-out detected, skipping:', presetName);
+          loadByIndex(index+1, 1.2);
+          clearInterval(whiteWatch); whiteWatch=null;
+        }
+      }catch(e){ clearInterval(whiteWatch); whiteWatch=null; }
+    }, 2000);
+  }
+
+  function getBC(){
+    const bc=window.butterchurn;
+    return bc && (typeof bc.createVisualizer==='function' ? bc : bc.default);
+  }
+
+  /* ===== boot/start/controls ===== */
+  async function boot(){
+    if (!webglOK()) { alert('WebGL not available. Enable hardware acceleration.'); return false; }
+    const BC=getBC(), merged=mergePresetPacks();
+    if (!BC || !merged.names.length){ alert('Preset libraries failed to load.'); return false; }
+    PRESETS = merged;
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ctxLocal = new AudioCtx({latencyHint:'interactive'});
+    const srcNode = ctxLocal.createMediaElementSource(audio);
+    const g = ctxLocal.createGain(); g.gain.value = +rVol.value;
+
+    srcNode.connect(ctxLocal.destination); // speakers
+    srcNode.connect(g);                    // visuals path
+
+    viz = BC.createVisualizer(ctxLocal, canvas, { width: canvas.clientWidth, height: canvas.clientHeight, pixelRatio: 1 });
+    viz.connectAudio(g);
+
+    ctx = ctxLocal;
+
+    size(); addEventListener('resize', size, {passive:true});
+    (function loop(){
+  if (viz && isPlaying) {
+    viz.render();
+  }
+  requestAnimationFrame(loop);
+})();
+
+
+    rVol.addEventListener('input', e=> audio.volume = +e.target.value, {passive:true});
+rSeek.addEventListener('input', e=>{ if(audio.duration) audio.currentTime = e.target.value * audio.duration; }, {passive:true});
+
+audio.addEventListener('timeupdate', ()=>{
+  const t = audio.currentTime || 0;
+  tTime.textContent = fmt(t);
+  if (audio.duration){
+    tDur.textContent = fmt(audio.duration);
+    rSeek.value = t / audio.duration;
+  }
+});
+
+audio.addEventListener('loadedmetadata', scheduleCadence);
+audio.addEventListener('seeked', scheduleCadence);
+
+audio.addEventListener('play', ()=>{
+  isPlaying = true;       // visuals run
+  scheduleCadence();
+});
+
+audio.addEventListener('pause', ()=>{
+  isPlaying = false;      // visuals freeze
+});
+
+audio.addEventListener('ended', ()=>{
+  isPlaying = false;      // visuals freeze at final frame
+  clearCadenceTimers();   // stop preset changes
+  btnPlay.textContent = '▶';
+});
+
+return true;
+}
+
+
+  async function startPlayback(){
+    try{
+      if (!ctx){ const ok = await boot(); if (!ok) return; }
+      if (ctx.state === 'suspended') await ctx.resume();
+      await audio.play();
+      starter.style.display='none';
+      btnPlay.textContent='⏸';
+
+      if (!keys.length) keys = buildPack();
+      index = Math.min(2, keys.length-1);  // begin on 3rd item for variety
+      loadByIndex(index, 0.0);
+      scheduleCadence();
+    }catch(e){
+      console.error('play failed', e);
+      alert('Could not start audio. Check the file URL/name.');
+    }
+  }
+
+  // Start hooks: overlay, button, canvas, keyboard
+  startBtn.addEventListener('click', startPlayback);
+  starter.addEventListener('click', e=>{ if (e.target===starter) startPlayback(); });
+  canvas.addEventListener('click', startPlayback);
+  document.addEventListener('keydown', e=>{ if (e.code==='Space'||e.key==='Enter') startPlayback(); });
+
+  // Transport
+  btnPlay.addEventListener('click', async ()=>{
+    try{
+      if (!ctx){ const ok=await boot(); if (!ok) return; }
+      if (audio.paused){ await audio.play(); scheduleCadence(); btnPlay.textContent='⏸'; }
+      else { audio.pause(); btnPlay.textContent='▶'; }
+    }catch(e){ console.error(e); alert('Could not start audio.'); }
+  });
+
+  // Preload metadata
+  audio.load();
+  </script>
+</body>
+</html>
