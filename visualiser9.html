@@ -1,0 +1,227 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Visualizer – Morocco (Techno, 133 BPM)</title>
+
+<style>
+:root{
+  --ui-bg: rgba(255,255,255,.88);
+  --ui-fg: #3e3e3e;
+  --font: 400 12px/22px Clarkson, "Proxima Nova", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+html,body{margin:0;height:100%;background:#000;color:var(--ui-fg);font:var(--font)}
+#vizwrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}
+#viz{position:absolute;inset:0;width:100%;height:100%}
+
+/* Hover UI */
+.ui{
+  position:absolute;left:0;right:0;bottom:0;
+  display:flex;align-items:center;gap:.75rem;
+  padding:.6rem .8rem;
+  background:var(--ui-bg);
+  opacity:0;transform:translateY(8px);
+  transition:.25s ease;
+  pointer-events:none;
+}
+#vizwrap:hover .ui{opacity:1;transform:none;pointer-events:auto}
+
+/* Starter */
+.starter{
+  position:absolute;inset:0;z-index:20;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:32px;
+  background:
+    linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,.55)),
+    url('https://rkangeluk.github.io/psy-viz1/covers/psy_cover.jpeg')
+      center/cover no-repeat;
+}
+
+.track-title{
+  font-size:clamp(26px,3.4vw,36px);
+  color:#fff;
+  text-shadow:0 2px 12px rgba(0,0,0,.9);
+}
+
+.play-oval{
+  all:unset;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  width:140px;height:50px;
+  border-radius:9999px;
+  background:rgba(197,203,157,.78);
+  border:2px solid #6e7f3d;
+  box-shadow:0 6px 22px rgba(0,0,0,.35);
+}
+.play-oval svg{width:20px;height:20px;fill:#486020}
+
+.btn{
+  all:unset;cursor:pointer;
+  width:36px;height:36px;
+  border-radius:9999px;
+  background:rgba(0,0,0,.06);
+}
+.btn:hover{background:rgba(0,0,0,.12)}
+.label{min-width:52px;text-align:right;opacity:.85}
+.grow{flex:1}
+.spacer{width:8px}
+
+input[type=range]{
+  appearance:none;height:4px;width:240px;
+  background:rgba(0,0,0,.18);border-radius:999px;
+}
+input[type=range]::-webkit-slider-thumb{
+  appearance:none;width:14px;height:14px;
+  border-radius:50%;background:#3e3e3e;
+}
+
+#probe{position:absolute;left:-9999px;top:-9999px;width:64px;height:64px}
+</style>
+</head>
+
+<body>
+<div id="vizwrap">
+  <canvas id="viz"></canvas>
+
+  <div class="ui">
+    <button id="play" class="btn">▶</button>
+    <span id="time" class="label">0:00</span>
+    <input id="seek" type="range" min="0" max="1" step="0.001" value="0" class="grow">
+    <span id="dur" class="label">0:00</span>
+    <div class="spacer"></div>
+    <input id="vol" type="range" min="0" max="1" step="0.01" value="0.9" style="width:110px">
+  </div>
+
+  <div id="starter" class="starter">
+    <div class="track-title">Morocco</div>
+    <button id="startBtn" class="play-oval">
+      <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+  </div>
+
+  <!-- ✅ Corrected audio source -->
+  <audio id="player" preload="auto" crossorigin="anonymous">
+    <source src="https://rkangeluk.github.io/psy-viz1/morocco.mp3" type="audio/mpeg">
+  </audio>
+
+  <canvas id="probe" width="64" height="64"></canvas>
+</div>
+
+<!-- Butterchurn libs -->
+<script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
+<script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurnExtraImages.min.js"></script>
+<script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+<script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsNonMinimal.min.js"></script>
+<script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
+<script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra2.min.js"></script>
+
+<script>
+/* ===== helpers ===== */
+const pad=s=>(s<10?'0':'')+s;
+const fmt=t=>(!isFinite(t)?'0:00':((t/60)|0)+':'+pad((t%60)|0));
+function webglOK(){const c=document.createElement('canvas');return !!(c.getContext('webgl')||c.getContext('experimental-webgl'));}
+function seededShuffle(a,s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;
+function r(){h=(1664525*h+1013904223)>>>0;return(h&0xfffffff)/0x10000000;}
+a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+
+/* ===== DOM ===== */
+const canvas=document.getElementById('viz');
+const audio=document.getElementById('player');
+const starter=document.getElementById('starter');
+const startBtn=document.getElementById('startBtn');
+const btnPlay=document.getElementById('play');
+const rSeek=document.getElementById('seek');
+const rVol=document.getElementById('vol');
+const tTime=document.getElementById('time');
+const tDur=document.getElementById('dur');
+const probe=document.getElementById('probe').getContext('2d',{willReadFrequently:true});
+
+/* ===== state ===== */
+const BPM=133;
+const MS_PER_BAR=(60000/BPM)*4;
+const CHANGE_BARS=[33,65,81,97,129,145];
+let ctx,viz,PRESETS={dict:{},names:[]},keys=[],index=0;
+let isPlaying=false,changeTimers=[];
+
+/* ===== presets ===== */
+function mergePresetPacks(){
+  const libs=[];
+  if(window.butterchurnPresets)libs.push((butterchurnPresets.default||butterchurnPresets).getPresets());
+  if(window.butterchurnPresetsNonMinimal)libs.push((butterchurnPresetsNonMinimal.default||butterchurnPresetsNonMinimal).getPresets());
+  if(window.butterchurnPresetsExtra)libs.push((butterchurnPresetsExtra.default||butterchurnPresetsExtra).getPresets());
+  if(window.butterchurnPresetsExtra2)libs.push((butterchurnPresetsExtra2.default||butterchurnPresetsExtra2).getPresets());
+  const dict=Object.assign({},...libs);
+  return {dict,names:Object.keys(dict)};
+}
+
+function buildPack(){
+  const re=/(tunnel|kaleid|grid|radial|rings|lines|spiral|vortex|cells|reaction|diffusion|mono|minimal)/i;
+  const pool=PRESETS.names.filter(n=>re.test(n));
+  return seededShuffle(pool,'morocco-133-geom');
+}
+
+function loadByIndex(i,blend=1.4){
+  if(!keys.length)keys=buildPack();
+  index=(i+keys.length)%keys.length;
+  viz.loadPreset(PRESETS.dict[keys[index]],blend);
+}
+
+/* ===== cadence ===== */
+function clearCadence(){
+  changeTimers.forEach(t=>clearTimeout(t));
+  changeTimers=[];
+}
+function scheduleCadence(){
+  clearCadence();
+  CHANGE_BARS.forEach(bar=>{
+    const ms=(bar-1)*MS_PER_BAR;
+    changeTimers.push(setTimeout(()=>loadByIndex(index+1,1.6),ms));
+  });
+}
+
+/* ===== boot ===== */
+async function boot(){
+  if(!webglOK())return alert('WebGL unavailable');
+  PRESETS=mergePresetPacks();
+  const BC=window.butterchurn;
+  ctx=new (AudioContext||webkitAudioContext)();
+  const src=ctx.createMediaElementSource(audio);
+  const g=ctx.createGain();g.gain.value=rVol.value;
+  src.connect(ctx.destination);
+  src.connect(g);
+  viz=(BC.createVisualizer?BC:BC.default).createVisualizer(ctx,canvas,{width:canvas.clientWidth,height:canvas.clientHeight,pixelRatio:1});
+  viz.connectAudio(g);
+  (function loop(){if(viz&&isPlaying)viz.render();requestAnimationFrame(loop);})();
+}
+
+/* ===== controls ===== */
+async function startPlayback(){
+  if(!ctx)await boot();
+  await audio.play();
+  isPlaying=true;
+  starter.style.display='none';
+  btnPlay.textContent='⏸';
+  loadByIndex(0,0);
+  scheduleCadence();
+}
+
+startBtn.onclick=startPlayback;
+starter.onclick=e=>e.target===starter&&startPlayback();
+canvas.onclick=startPlayback;
+
+btnPlay.onclick=async()=>{
+  if(audio.paused){await audio.play();isPlaying=true;btnPlay.textContent='⏸';}
+  else{audio.pause();isPlaying=false;btnPlay.textContent='▶';}
+};
+
+audio.ontimeupdate=()=>{
+  tTime.textContent=fmt(audio.currentTime);
+  if(audio.duration){tDur.textContent=fmt(audio.duration);rSeek.value=audio.currentTime/audio.duration;}
+};
+rSeek.oninput=e=>audio.duration&&(audio.currentTime=e.target.value*audio.duration);
+rVol.oninput=e=>audio.volume=e.target.value;
+</script>
+</body>
+</html>
