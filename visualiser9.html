@@ -101,7 +101,7 @@ input[type=range]::-webkit-slider-thumb{
     </button>
   </div>
 
-  <!-- ✅ Corrected audio source -->
+  <!-- Audio source -->
   <audio id="player" preload="auto" crossorigin="anonymous">
     <source src="https://rkangeluk.github.io/psy-viz1/morocco.mp3" type="audio/mpeg">
   </audio>
@@ -127,6 +127,7 @@ function r(){h=(1664525*h+1013904223)>>>0;return(h&0xfffffff)/0x10000000;}
 a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
 /* ===== DOM ===== */
+const wrap=document.getElementById('vizwrap');
 const canvas=document.getElementById('viz');
 const audio=document.getElementById('player');
 const starter=document.getElementById('starter');
@@ -144,6 +145,12 @@ const MS_PER_BAR=(60000/BPM)*4;
 const CHANGE_BARS=[33,65,81,97,129,145];
 let ctx,viz,PRESETS={dict:{},names:[]},keys=[],index=0;
 let isPlaying=false,changeTimers=[];
+
+function size(){
+  const r = wrap.getBoundingClientRect();
+  canvas.width = r.width; canvas.height = r.height;
+  if (viz) viz.setRendererSize(r.width, r.height);
+}
 
 /* ===== presets ===== */
 function mergePresetPacks(){
@@ -193,6 +200,9 @@ async function boot(){
   src.connect(g);
   viz=(BC.createVisualizer?BC:BC.default).createVisualizer(ctx,canvas,{width:canvas.clientWidth,height:canvas.clientHeight,pixelRatio:1});
   viz.connectAudio(g);
+
+  size(); addEventListener('resize', size, {passive:true});
+
   (function loop(){if(viz&&isPlaying)viz.render();requestAnimationFrame(loop);})();
 }
 
