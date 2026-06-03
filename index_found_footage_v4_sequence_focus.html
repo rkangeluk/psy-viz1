@@ -1,0 +1,69 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>One v4</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+#scene{z-index:1} #damage{z-index:2;mix-blend-mode:screen} #dirt{z-index:3;mix-blend-mode:multiply}
+</style></head><body>
+<canvas id="scene"></canvas><canvas id="damage"></canvas><canvas id="dirt"></canvas>
+<audio id="audio" controls style="position:absolute;z-index:9;left:10px;bottom:10px" src="one.mp3"></audio>
+<script>
+const CLIPS={
+mayor:"https://pub-72e9e2f20fd24867ab095d7021d419db.r2.dev/mayor.mp4",
+hatman:"https://pub-72e9e2f20fd24867ab095d7021d419db.r2.dev/hatman.mp4",
+fete1:"https://pub-72e9e2f20fd24867ab095d7021d419db.r2.dev/fete1.mp4",
+poolparty:"https://pub-72e9e2f20fd24867ab095d7021d419db.r2.dev/poolparty.mp4",
+swimming:"https://pub-72e9e2f20fd24867ab095d7021d419db.r2.dev/swimming.mp4",
+dance:"https://pub-72e9e2f20fd24867ab095d7021d419db.r2.dev/dance.mp4",
+clown:"https://pub-72e9e2f20fd24867ab095d7021d419db.r2.dev/clown.mp4",
+fete2:"https://pub-72e9e2f20fd24867ab095d7021d419db.r2.dev/fete2.mp4",
+ny:"https://pub-72e9e2f20fd24867ab095d7021d419db.r2.dev/NY.mp4"
+};
+const sequences=[["mayor","hatman","fete1"],["poolparty","swimming","dance"],["clown","fete2","ny"]];
+const scene=document.getElementById('scene'),damage=document.getElementById('damage'),dirt=document.getElementById('dirt');
+const s=scene.getContext('2d'),d=damage.getContext('2d'),di=dirt.getContext('2d');
+const audio=document.getElementById('audio');
+let vids={},seq=0,rep=0,clip=0,nextChange=0;
+function resize(){for(const c of [scene,damage,dirt]){c.width=innerWidth;c.height=innerHeight}} resize(); addEventListener('resize',resize);
+for(const [k,u] of Object.entries(CLIPS)){let v=document.createElement('video');v.src=u;v.crossOrigin='anonymous';v.loop=true;v.muted=true;v.playsInline=true;v.play();vids[k]=v;}
+function currentVid(){return vids[sequences[seq][clip]]}
+function advance(){
+ clip++;
+ if(clip>=sequences[seq].length){clip=0;rep++; if(rep>=2){rep=0;seq=(seq+1)%sequences.length;}}
+ let v=currentVid(); try{if(v.duration)v.currentTime=Math.random()*Math.max(0.1,v.duration-2);}catch(e){}
+ nextChange=audio.currentTime+2+Math.random()*1.2;
+}
+function scratchBurst(){
+ const n=3+Math.floor(Math.random()*5);
+ for(let i=0;i<n;i++){
+   d.strokeStyle=`rgba(255,250,230,${0.25+Math.random()*0.5})`;
+   d.lineWidth=1+Math.random()*3;
+   d.beginPath();
+   let x=Math.random()*innerWidth,y=Math.random()*innerHeight;
+   d.moveTo(x,y);
+   d.bezierCurveTo(x+Math.random()*500-250,y+Math.random()*300-150,x+Math.random()*500-250,y+Math.random()*300-150,x+Math.random()*800-400,y+Math.random()*800-400);
+   d.stroke();
+ }
+}
+function frame(){
+ requestAnimationFrame(frame);
+ if(!audio.paused && audio.currentTime>nextChange) advance();
+ d.clearRect(0,0,innerWidth,innerHeight);
+ const v=currentVid();
+ if(v.readyState>1){
+   const scale=Math.max(innerWidth/v.videoWidth,innerHeight/v.videoHeight);
+   const w=v.videoWidth*scale,h=v.videoHeight*scale;
+   s.fillStyle='rgba(0,0,0,0.06)'; s.fillRect(0,0,innerWidth,innerHeight);
+   s.filter='sepia(.35) grayscale(.25) contrast(.9)';
+   s.drawImage(v,(innerWidth-w)/2,(innerHeight-h)/2,w,h);
+   s.filter='none';
+ }
+ if(Math.random()<0.35) scratchBurst();
+ if(Math.random()<0.04){d.fillStyle='rgba(255,240,210,0.18)';d.fillRect(0,0,innerWidth,innerHeight);}
+ di.clearRect(0,0,innerWidth,innerHeight);
+ di.fillStyle='rgba(0,0,0,.28)'; di.fillRect(0,0,18,innerHeight); di.fillRect(innerWidth-18,0,18,innerHeight);
+}
+audio.addEventListener('play',()=>{if(!nextChange) advance();});
+frame();
+</script></body></html>
