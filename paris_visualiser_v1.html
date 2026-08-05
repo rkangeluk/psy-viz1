@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualizer – Dérive (132 BPM) v4</title>
+<title>Dérive</title>
 <style>
 html,body{margin:0;height:100%;background:#050403;overflow:hidden;font:400 12px/22px Arial,sans-serif;color:#332e27}
 #wrap{position:relative;width:100%;height:100vh;overflow:hidden;background:#030201}
@@ -31,7 +31,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;b
   gap:32px;
   background:
     linear-gradient(180deg,rgba(0,0,0,.34),rgba(0,0,0,.60)),
-    url('covers/psy_cover.jpeg') center/cover no-repeat;
+    linear-gradient(180deg,rgba(0,0,0,.34),rgba(0,0,0,.60));
 }
 .track-title{
   font-size:clamp(26px,3.4vw,36px);
@@ -60,18 +60,26 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;b
     <input id="vol" type="range" min="0" max="1" step="0.01" value="0.9" style="width:110px">
   </div>
   <div id="starter" class="starter">
-    <div class="track-title">RITUAL</div>
-    <!-- v4: performance pass, cached symbols, frame jumps and final title/cover -->
+    <div class="track-title"></div>
+    <!-- v5: central configuration and stable hand-drawn symbol imperfections -->
     <button id="startBtn" class="play-oval" aria-label="Play">
       <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
     </button>
     <div id="loadStatus" class="load-status" aria-live="polite"></div>
   </div>
-  <audio id="audio" preload="metadata" crossorigin="anonymous"><source src="paris.mp3" type="audio/mpeg"></audio>
+  <audio id="audio" preload="metadata" crossorigin="anonymous"></audio>
 </div>
 
 <script>
-const BPM=132, BEATS_PER_BAR=4, TRACK_BARS=199;
+const CONFIG={
+  title:"Dérive",
+  artist:"",
+  bpm:132,
+  bars:199,
+  audio:"paris.mp3",
+  cover:"covers/psy_cover.jpeg"
+};
+const BPM=CONFIG.bpm, BEATS_PER_BAR=4, TRACK_BARS=CONFIG.bars;
 const SECONDS_PER_BAR=BEATS_PER_BAR*60/BPM;
 const TRACK_SECONDS=TRACK_BARS*SECONDS_PER_BAR;
 const MUSICAL_END=355; // 5:55 — fade begins here; remaining audio is treated as tail
@@ -134,6 +142,14 @@ const sceneCanvas=document.getElementById('scene'), colourCanvas=document.getEle
 const s=sceneCanvas.getContext('2d',{alpha:false}), col=colourCanvas.getContext('2d',{alpha:true}), d=damageCanvas.getContext('2d',{alpha:true}), di=dirtCanvas.getContext('2d',{alpha:true});
 const audio=document.getElementById('audio'), starter=document.getElementById('starter'), startBtn=document.getElementById('startBtn'), loadStatus=document.getElementById('loadStatus'), btnPlay=document.getElementById('play');
 const rSeek=document.getElementById('seek'), rVol=document.getElementById('vol'), tTime=document.getElementById('time'), tDur=document.getElementById('dur');
+
+document.title=`${CONFIG.title} — Visualizer`;
+document.querySelector('.track-title').textContent=CONFIG.title;
+audio.src=CONFIG.audio;
+starter.style.backgroundImage=`linear-gradient(180deg,rgba(0,0,0,.34),rgba(0,0,0,.60)),url("${CONFIG.cover}")`;
+starter.style.backgroundPosition='center';
+starter.style.backgroundSize='cover';
+starter.style.backgroundRepeat='no-repeat';
 
 let audioCtx,src,gain,analyser,freqData,timeData,vids={},isPlaying=false,frame=0,lastBeat=-1,lastBar=-1;
 let seq=0,rep=0,clip=0,nextChange=0,gateX=0,gateY=0,hardFlash=0,loopFrames=0,loopTime=0,tearFlash=0,modeUntil=0,scratchMode='worn';
@@ -297,21 +313,93 @@ function updateScratchMode(t,p,bass,highs,barPulse){
  if(bass>.64||highs>.70||p.outro&&Math.random()<.18){scratchMode='vandalised';modeUntil=t+rand(.6,1.8);}
 }
 const SYMBOL_KINDS=new Set(['spiral','nest','square','triangle','arrow','eye','sigil','vesica','sun','fork','hex']);
-function circlePath(rx,ry=rx,steps=48,cx=0,cy=0){const pts=[];for(let i=0;i<=steps;i++){const q=i/steps*Math.PI*2;pts.push([cx+Math.cos(q)*rx,cy+Math.sin(q)*ry]);}return pts;}
-function roughenPath(points,amount=4){return points.map(([x,y])=>[x+rand(-amount,amount),y+rand(-amount,amount)]);}
+function circlePath(rx,ry=rx,steps=48,cx=0,cy=0){
+ const pts=[];
+ for(let i=0;i<=steps;i++){
+  const q=i/steps*Math.PI*2;
+  pts.push([cx+Math.cos(q)*rx,cy+Math.sin(q)*ry]);
+ }
+ return pts;
+}
+function extendOpenPath(points,startAmount=0,endAmount=0){
+ const out=points.map(([x,y])=>[x,y]);
+ if(out.length<2)return out;
+ if(startAmount){
+  const [x0,y0]=out[0],[x1,y1]=out[1];
+  out[0]=[x0+(x0-x1)*startAmount,y0+(y0-y1)*startAmount];
+ }
+ if(endAmount){
+  const n=out.length,[xa,ya]=out[n-2],[xb,yb]=out[n-1];
+  out[n-1]=[xb+(xb-xa)*endAmount,yb+(yb-ya)*endAmount];
+ }
+ return out;
+}
+function imperfectClosedPath(points,overrun=.045){
+ const out=points.slice(0,-1).map(([x,y])=>[x,y]);
+ if(out.length<3)return points.map(([x,y])=>[x,y]);
+ const first=out[0],second=out[1],last=out[out.length-1];
+ // The closing stroke passes the starting point very slightly, like a hand that did not stop exactly on the join.
+ out.push([first[0]+(first[0]-last[0])*.015,first[1]+(first[1]-last[1])*.015]);
+ out.push([first[0]+(second[0]-first[0])*overrun,first[1]+(second[1]-first[1])*overrun]);
+ return out;
+}
 function createSymbolPaths(kind,r,len){
  const paths=[];
- if(kind==='spiral'||kind==='nest'){const count=kind==='nest'?3:1,turns=kind==='nest'?5.8:3.4;for(let c=0;c<count;c++){const pts=[];for(let i=0;i<88;i++){const q=i/87,ang=i*.23+c*.7,rr=q*r;pts.push([Math.cos(ang*turns/3)*rr+rand(-3,3),Math.sin(ang*turns/3)*rr+rand(-3,3)]);}paths.push(pts);}}
- else if(kind==='square')paths.push(roughenPath([[-r*.62,-r*.62],[r*.62,-r*.62],[r*.62,r*.62],[-r*.62,r*.62],[-r*.62,-r*.62]],5));
- else if(kind==='triangle')paths.push(roughenPath([[0,-r*.78],[r*.72,r*.58],[-r*.72,r*.58],[0,-r*.78]],5));
- else if(kind==='arrow')paths.push(roughenPath([[-len*.28,0],[len*.28,0],[len*.12,-len*.12],[len*.28,0],[len*.12,len*.12]],4));
- else if(kind==='eye'){const eye=[];for(let i=0;i<=34;i++){const x=-r*.72+i*(1.44*r/34),y=Math.sin(i/34*Math.PI)*r*.30;eye.push([x,y]);}for(let i=34;i>=0;i--){const x=-r*.72+i*(1.44*r/34),y=-Math.sin(i/34*Math.PI)*r*.30;eye.push([x,y]);}eye.push(eye[0]);paths.push(roughenPath(eye,3),roughenPath(circlePath(r*.15,r*.20,30),2));}
- else if(kind==='vesica')paths.push(roughenPath(circlePath(r*.48,r*.58,44,-r*.22,0),3),roughenPath(circlePath(r*.48,r*.58,44,r*.22,0),3));
- else if(kind==='sun'){paths.push(roughenPath(circlePath(r*.30,r*.30,42),3));for(let i=0;i<12;i++){const q=i*Math.PI/6;paths.push(roughenPath([[Math.cos(q)*r*.42,Math.sin(q)*r*.42],[Math.cos(q)*r*.78,Math.sin(q)*r*.78]],2));}}
- else if(kind==='hex'){for(const flip of [1,-1]){const pts=[];for(let i=0;i<3;i++){const q=-Math.PI/2+i*Math.PI*2/3;pts.push([Math.cos(q)*r*.68,Math.sin(q)*r*.68*flip]);}pts.push(pts[0]);paths.push(roughenPath(pts,4));}}
- else if(kind==='fork')paths.push(roughenPath([[0,r*.72],[0,-r*.18],[-r*.38,-r*.66],[0,-r*.18],[r*.38,-r*.66]],4));
- else if(kind==='sigil')paths.push(roughenPath([[0,-r*.78],[r*.16,-r*.26],[-r*.34,r*.04],[r*.38,r*.26],[-r*.10,r*.70],[0,-r*.78]],5),roughenPath(circlePath(r*.62,r*.62,46),3));
+ if(kind==='spiral'||kind==='nest'){
+  const count=kind==='nest'?3:1,turns=kind==='nest'?5.8:3.4;
+  for(let c=0;c<count;c++){
+   const pts=[];
+   const xBias=1+rand(-.025,.025),yBias=1+rand(-.025,.025);
+   for(let i=0;i<88;i++){
+    const q=i/87,ang=i*.23+c*.7,rr=q*r;
+    pts.push([Math.cos(ang*turns/3)*rr*xBias,Math.sin(ang*turns/3)*rr*yBias]);
+   }
+   paths.push(extendOpenPath(pts,0,rand(.015,.045)));
+  }
+ }else if(kind==='square'){
+  paths.push(imperfectClosedPath([[-r*.62,-r*.62],[r*.62,-r*.62],[r*.62,r*.62],[-r*.62,r*.62],[-r*.62,-r*.62]],rand(.025,.065)));
+ }else if(kind==='triangle'){
+  paths.push(imperfectClosedPath([[0,-r*.78],[r*.72,r*.58],[-r*.72,r*.58],[0,-r*.78]],rand(.025,.075)));
+ }else if(kind==='arrow'){
+  paths.push(extendOpenPath([[-len*.28,0],[len*.28,0],[len*.12,-len*.12],[len*.28,0],[len*.12,len*.12]],rand(.01,.035),rand(.025,.07)));
+ }else if(kind==='eye'){
+  const eye=[];
+  for(let i=0;i<=34;i++){const x=-r*.72+i*(1.44*r/34),y=Math.sin(i/34*Math.PI)*r*.30;eye.push([x,y]);}
+  for(let i=34;i>=0;i--){const x=-r*.72+i*(1.44*r/34),y=-Math.sin(i/34*Math.PI)*r*.30;eye.push([x,y]);}
+  eye.push(eye[0]);
+  paths.push(imperfectClosedPath(eye,rand(.018,.045)),imperfectClosedPath(circlePath(r*.15,r*.20,30),rand(.02,.055)));
+ }else if(kind==='vesica'){
+  paths.push(imperfectClosedPath(circlePath(r*.48,r*.58,44,-r*.22,0),rand(.018,.05)),imperfectClosedPath(circlePath(r*.48,r*.58,44,r*.22,0),rand(.018,.05)));
+ }else if(kind==='sun'){
+  paths.push(imperfectClosedPath(circlePath(r*.30,r*.30,42),rand(.018,.05)));
+  for(let i=0;i<12;i++){
+   const q=i*Math.PI/6;
+   paths.push(extendOpenPath([[Math.cos(q)*r*.42,Math.sin(q)*r*.42],[Math.cos(q)*r*.78,Math.sin(q)*r*.78]],rand(0,.035),rand(.02,.09)));
+  }
+ }else if(kind==='hex'){
+  for(const flip of [1,-1]){
+   const pts=[];
+   for(let i=0;i<3;i++){const q=-Math.PI/2+i*Math.PI*2/3;pts.push([Math.cos(q)*r*.68,Math.sin(q)*r*.68*flip]);}
+   pts.push(pts[0]);paths.push(imperfectClosedPath(pts,rand(.025,.075)));
+  }
+ }else if(kind==='fork'){
+  paths.push(extendOpenPath([[0,r*.72],[0,-r*.18],[-r*.38,-r*.66],[0,-r*.18],[r*.38,-r*.66]],rand(.01,.04),rand(.03,.08)));
+ }else if(kind==='sigil'){
+  paths.push(imperfectClosedPath([[0,-r*.78],[r*.16,-r*.26],[-r*.34,r*.04],[r*.38,r*.26],[-r*.10,r*.70],[0,-r*.78]],rand(.025,.075)),imperfectClosedPath(circlePath(r*.62,r*.62,46),rand(.018,.05)));
+ }
  return paths;
+}
+function createStrokeProfile(pointCount,seed=Math.random()*1000){
+ const profile=[];
+ const phase=seed%Math.PI*2;
+ for(let i=0;i<Math.max(1,pointCount-1);i++){
+  const q=i/Math.max(1,pointCount-2);
+  // Stable pressure changes: broad, slow variation rather than per-frame wobble.
+  const broad=Math.sin(q*Math.PI*2+phase)*.12;
+  const secondary=Math.sin(q*Math.PI*5+phase*.63)*.045;
+  profile.push(clamp(1+broad+secondary,.78,1.22));
+ }
+ return profile;
 }
 function spawnGesture(w,h,p,kindOverride=null){
  const kinds=['forest','slash','spiral','nest','claw','scribble','xmarks','scrape','square','triangle','arrow','parallel','collapsing','eye','sigil','vesica','sun','fork','hex'];
@@ -321,6 +409,7 @@ function spawnGesture(w,h,p,kindOverride=null){
  const life=symbol?Math.floor(rand(42,150)):Math.floor(rand(3,18));
  const toneRoll=Math.random();
  const tone=toneRoll<.66?'ochre':toneRoll<.90?'chalk':'rust';
+ const paths=symbol?createSymbolPaths(kind,rand(w*.08,w*.24),rand(w*.28,w*.72)):null;
  gestures.push({
   kind,symbol,tone,
   x:rand(w*.08,w*.92),y:rand(h*.08,h*.92),
@@ -329,7 +418,8 @@ function spawnGesture(w,h,p,kindOverride=null){
   alpha:symbol?rand(.38,.78)*(0.68+p.symbols*.34):rand(.16,.58)*(0.42+p.scratch*.48),
   width:symbol?rand(5.2,10.8)*viewportScale:rand(.65,2.2)*viewportScale,
   seed:Math.random()*1000,
-  paths:symbol?createSymbolPaths(kind,rand(w*.08,w*.24),rand(w*.28,w*.72)):null,
+  paths,
+  strokeProfiles:paths?paths.map((path,index)=>createStrokeProfile(path.length,Math.random()*1000+index*31)):null,
   drawFrames:symbol?Math.floor(rand(18,42)):0
  });
  gestures=gestures.slice(-30);
@@ -344,37 +434,48 @@ function drawScratchLine(ctx,pts,width,alpha,dark=false){
  ctx.shadowColor=dark?'transparent':`rgba(255,255,255,${alpha*.18})`;ctx.shadowBlur=dark?0:width*.35;
  tracePoints(ctx,pts);ctx.stroke();ctx.restore();
 }
-function drawSymbolLine(ctx,pts,width,alpha,tone='ochre'){
+function drawVariableStroke(ctx,pts,baseWidth,strokeStyle,profile,dx=0,dy=0){
+ if(pts.length<2)return;
+ ctx.strokeStyle=strokeStyle;
+ ctx.lineCap='round';
+ for(let i=1;i<pts.length;i++){
+  const mult=profile?.[i-1]??1;
+  ctx.lineWidth=Math.max(.45,baseWidth*mult);
+  ctx.beginPath();
+  ctx.moveTo(pts[i-1][0]+dx,pts[i-1][1]+dy);
+  ctx.lineTo(pts[i][0]+dx,pts[i][1]+dy);
+  ctx.stroke();
+ }
+}
+function drawSymbolLine(ctx,pts,width,alpha,tone='ochre',profile=null){
  const colours={
   chalk:`rgba(226,211,171,${alpha})`,
   ochre:`rgba(205,173,112,${alpha})`,
   rust:`rgba(164,76,48,${alpha})`
  };
- ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
- ctx.lineWidth=width*1.72;ctx.strokeStyle=`rgba(15,10,7,${alpha*.50})`;tracePoints(ctx,pts,2.2,2.2);ctx.stroke();
- ctx.lineWidth=width;ctx.strokeStyle=colours[tone]||colours.ochre;tracePoints(ctx,pts);ctx.stroke();
- ctx.lineWidth=Math.max(.7,width*.16);ctx.strokeStyle=`rgba(246,232,194,${alpha*.48})`;
- tracePoints(ctx,pts,0,-.7);ctx.stroke();ctx.restore();
+ ctx.save();ctx.lineJoin='round';
+ drawVariableStroke(ctx,pts,width*1.72,`rgba(15,10,7,${alpha*.50})`,profile,2.2,2.2);
+ drawVariableStroke(ctx,pts,width,colours[tone]||colours.ochre,profile);
+ const highlightProfile=profile?profile.map(v=>clamp(1.08-v*.18,.72,1.08)):null;
+ drawVariableStroke(ctx,pts,Math.max(.7,width*.16),`rgba(246,232,194,${alpha*.48})`,highlightProfile,0,-.7);
+ ctx.restore();
 }
 function drawJaggedLine(ctx,pts,width,alpha,asSymbol=false,tone='ochre'){
  if(asSymbol)drawSymbolLine(ctx,pts,width,alpha,tone);else drawScratchLine(ctx,pts,width,alpha,Math.random()<.08);
-}
-function roughShapeLine(points,width,alpha,tone='ochre'){
- drawSymbolLine(d,points.map(pt=>[pt[0]+rand(-5,5),pt[1]+rand(-5,5)]),width,alpha,tone);
 }
 
 function drawGesture(g,w,h,p,bass,highs){
  const f=clamp(g.life/g.maxLife,0,1),a=g.alpha*(.35+f*.65);
  const degenerate=(1-f)*p.scratch + bass*.35;
- d.save();d.translate(g.x,g.y);d.rotate(g.angle+Math.sin((frame+g.seed)*.08)*.025);
+ d.save();d.translate(g.x,g.y);d.rotate(g.angle);
  if(g.symbol&&g.paths){
   const age=g.maxLife-g.life,progress=clamp(age/Math.max(1,g.drawFrames),0,1);
-  const pulse=1+Math.sin(frame*.035+g.seed)*.025;
-  d.scale(pulse,pulse);
-  for(const path of g.paths){
+  g.paths.forEach((path,index)=>{
    const count=Math.max(2,Math.ceil(path.length*progress));
-   drawSymbolLine(d,path.slice(0,count),g.width,a,g.tone);
-  }
+   const visible=path.slice(0,count);
+   const profile=g.strokeProfiles?.[index]?.slice(0,Math.max(1,count-1));
+   drawSymbolLine(d,visible,g.width,a,g.tone,profile);
+  });
   d.restore();return;
  }
  if(g.kind==='forest'){
