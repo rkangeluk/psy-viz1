@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Visualizer – Untitled (132 BPM) v2</title>
+<title>Visualizer – Untitled (132 BPM) v3</title>
 <style>
 html,body{margin:0;height:100%;background:#050403;overflow:hidden;font:400 12px/22px Arial,sans-serif;color:#332e27}
 #wrap{position:relative;width:100%;height:100vh;overflow:hidden;background:#030201}
@@ -62,7 +62,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;b
   </div>
   <div id="starter" class="starter">
     <div class="track-title">UNTITLED</div>
-    <!-- v2: warm scored symbols / cold hairline scratches -->
+    <!-- v3: scored symbols, cold scratches, recurring duotone echoes and closing accumulation -->
     <button id="startBtn" class="play-oval" aria-label="Play">
       <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
     </button>
@@ -75,7 +75,30 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;b
 const BPM=132, BEATS_PER_BAR=4, TRACK_BARS=199;
 const SECONDS_PER_BAR=BEATS_PER_BAR*60/BPM;
 const TRACK_SECONDS=TRACK_BARS*SECONDS_PER_BAR;
+const MUSICAL_END=355; // 5:55 — fade begins here; remaining audio is treated as tail
+const CLOSE_BUILD_START=342; // 5:42 — begin accumulating image layers
 const atBar=bar=>(bar-1)*SECONDS_PER_BAR;
+
+// Brief returns of the opening's saturated, displaced afterimage language.
+// Each window fades in and out rather than switching abruptly.
+const DUOTONE_WINDOWS=[
+  {start:104.5,end:110.5,strength:.72},
+  {start:168.0,end:174.5,strength:.82},
+  {start:241.5,end:247.0,strength:.78},
+  {start:300.0,end:306.5,strength:.90}
+];
+function windowEnvelope(t,start,end,edge=.9){
+  if(t<start||t>end)return 0;
+  return Math.min(1,(t-start)/edge,(end-t)/edge);
+}
+function duotoneAmount(t){
+  let amount=0;
+  for(const q of DUOTONE_WINDOWS)amount=Math.max(amount,windowEnvelope(t,q.start,q.end)*q.strength);
+  // The opening establishes the effect, then relinquishes it during the first section.
+  if(t<18)amount=Math.max(amount,clamp(1-t/18,0,1)*.88);
+  return amount;
+}
+function closingBuildAmount(t){return clamp((t-CLOSE_BUILD_START)/(MUSICAL_END-CLOSE_BUILD_START),0,1);}
 
 const VIDEO_BASE="https://pub-72e9e2f20fd24867ab095d7021d419db.r2.dev/paris_videos/";
 const CLIPS={
@@ -104,7 +127,7 @@ const TIMELINE=[
   {at:atBar(97),name:"possession",wash:"rgba(92,42,67,",washA:.22,bleach:.08,flicker:.44,damage:.56,scratch:.62,cutMin:1.4,cutMax:2.7,repeats:3,slow:.48,symbols:.92,ghost:.26},
   {at:atBar(129),name:"rupture",wash:null,washA:0,bleach:.58,flicker:.62,damage:.76,scratch:.82,cutMin:.75,cutMax:1.8,repeats:3,slow:.28,symbols:1,ghost:.36,white:.08},
   {at:atBar(161),name:"transmission",wash:"rgba(118,32,18,",washA:.24,bleach:.14,flicker:.48,damage:.68,scratch:.72,cutMin:1.1,cutMax:2.2,repeats:3,slow:.50,symbols:1,ghost:.42},
-  {at:atBar(193),name:"coda",wash:null,washA:0,bleach:.72,flicker:.20,damage:.88,scratch:.92,cutMin:.45,cutMax:1.1,repeats:3,slow:.20,symbols:1,ghost:.55,outro:true,white:.18}
+  {at:CLOSE_BUILD_START,name:"coda",wash:null,washA:0,bleach:.72,flicker:.20,damage:.88,scratch:.92,cutMin:.45,cutMax:1.1,repeats:3,slow:.20,symbols:1,ghost:.55,outro:true,white:.18}
 ];
 
 const wrap=document.getElementById('wrap');
@@ -223,6 +246,34 @@ function drawCover(ctx,v,w,h,alpha=1,dx=0,dy=0,zoom=1){
  if(!v||v.readyState<2)return false;
  const scale=Math.max(w/v.videoWidth,h/v.videoHeight)*zoom,dw=v.videoWidth*scale,dh=v.videoHeight*scale;
  ctx.save();ctx.globalAlpha=alpha;ctx.drawImage(v,(w-dw)/2+dx,(h-dh)/2+dy,dw,dh);ctx.restore();return true;
+}
+function drawDuotoneEcho(ctx,v,w,h,amount,bass,highs){
+ if(!v||v.readyState<2||amount<=0)return;
+ const shift=(6+bass*14)*amount;
+ ctx.save();
+ ctx.globalCompositeOperation='screen';
+ ctx.filter=`grayscale(.18) contrast(${1.22+amount*.45}) saturate(${1.55+amount*1.35}) sepia(.18) hue-rotate(-22deg)`;
+ drawCover(ctx,v,w,h,.17*amount,-shift,highs*4,1.045+amount*.018);
+ ctx.filter=`grayscale(.08) contrast(${1.16+amount*.36}) saturate(${1.7+amount*1.5}) sepia(.08) hue-rotate(142deg)`;
+ drawCover(ctx,v,w,h,.14*amount,shift,-bass*5,1.055+amount*.022);
+ ctx.globalCompositeOperation='source-over';
+ ctx.restore();
+}
+function drawClosingAccumulation(ctx,w,h,amount,bass){
+ if(amount<=0)return;
+ const ready=Object.values(vids).filter(v=>v&&v.readyState>=2);
+ if(!ready.length)return;
+ const layers=Math.min(9,2+Math.floor(amount*8));
+ ctx.save();
+ for(let i=0;i<layers;i++){
+  const v=ready[(frame+i*3)%ready.length];
+  const phase=i/Math.max(1,layers-1);
+  ctx.globalCompositeOperation=i%3===0?'screen':(i%3===1?'lighter':'source-over');
+  ctx.filter=`grayscale(${.22+phase*.42}) contrast(${1.06+amount*.46}) saturate(${.65+amount*.85}) sepia(${.10+phase*.18})`;
+  const spread=(10+amount*44)*(phase-.5);
+  drawCover(ctx,v,w,h,(.035+amount*.055)*(1-phase*.28),spread+rand(-3,3),-spread*.45+rand(-3,3),1.025+phase*.055+bass*.012);
+ }
+ ctx.filter='none';ctx.globalCompositeOperation='source-over';ctx.restore();
 }
 function updateScratchMode(t,p,bass,highs,barPulse){
  if(t>modeUntil||barPulse&&Math.random()<.32){
@@ -352,13 +403,16 @@ function drawScratchGestures(w,h,p,bass,highs,beatPulse,barPulse){
  const grind=grindMoment(tNow);
  if(p.openingRamp) spawn += .045;
  if(grind) spawn += .24;
+ const closeBuild=closingBuildAmount(tNow);
+ if(closeBuild>0)spawn += closeBuild*.22;
 
  // Most major geometry changes are beat-locked: kicks, half-bars and bars.
  const beatLocked = nearKick(tNow,.12);
  if(beatLocked && Math.random()<spawn*1.35) spawnGesture(w,h,p,Math.random()<.72?'slash':null);
  if(beatPulse && Math.random()<p.scratch*.18+bass*.14) spawnGesture(w,h,p,scratchMode==='vandalised'?'slash':null);
  if(barPulse && (scratchMode==='vandalised'||grind) && Math.random()<.34) spawnGesture(w,h,p,'forest');
- if(barPulse && Math.random()<.20+p.symbols*.32){const symbols=['triangle','spiral','eye','vesica','sun','fork','hex','sigil','square'];spawnGesture(w,h,p,symbols[Math.floor(Math.random()*symbols.length)]);}
+ if(barPulse && Math.random()<.20+p.symbols*.32+closeBuild*.44){const symbols=['triangle','spiral','eye','vesica','sun','fork','hex','sigil','square'];spawnGesture(w,h,p,symbols[Math.floor(Math.random()*symbols.length)]);}
+ if(closeBuild>.35&&beatPulse&&Math.random()<closeBuild*.22)spawnGesture(w,h,p,Math.random()<.68?'sigil':'eye');
 
  gestures=gestures.filter(g=>g.life-- > 0);
  for(const g of gestures)drawGesture(g,w,h,p,bass,highs);
@@ -397,7 +451,7 @@ function render(){
  const w=wrap.clientWidth,h=wrap.clientHeight;
  if(!isPlaying||!analyser){s.fillStyle='#15100a';s.fillRect(0,0,w,h);return;}
  frame++;analyser.getByteFrequencyData(freqData);analyser.getByteTimeDomainData(timeData);
- const t=audio.currentTime,p=paramsAt(t),bass=clamp(band(35,165)*1.45,0,1),highs=clamp(band(2600,9000)*1.55,0,1),mids=clamp(band(520,2600)*1.2,0,1),energy=clamp(rms()*2.7,0,1);
+ const t=audio.currentTime,p=paramsAt(t),duotone=duotoneAmount(t),closeBuild=closingBuildAmount(t),bass=clamp(band(35,165)*1.45,0,1),highs=clamp(band(2600,9000)*1.55,0,1),mids=clamp(band(520,2600)*1.2,0,1),energy=clamp(rms()*2.7,0,1);
  const beat=Math.floor(t*BPM/60),bar=Math.floor(beat/BEATS_PER_BAR),beatPulse=beat!==lastBeat,barPulse=bar!==lastBar;
  if(beatPulse){lastBeat=beat;if(bass>.28||scratchMode==='vandalised'){gateX=rand(-9,9)*(bass+p.damage);gateY=rand(-6,6)*(bass+p.damage);}if(bass>.58)tearFlash=.18;}
  if(barPulse){lastBar=bar;if(Math.random()<.16+p.damage*.24)burns.push({x:rand(w*.1,w*.9),y:rand(h*.1,h*.9),r:rand(120,360)*(1+bass),life:rand(20,52)});}
@@ -421,11 +475,18 @@ if(grindMoment(t)&&v&&v.duration&&Math.random()<.55){
  drawCover(s,v,w,h,openingVis,gateX+rand(-.4,.4),gateY+rand(-.4,.4),1.035+p.damage*.028);
  if(p.damage>.28&&Math.random()<.08+p.damage*.18){const names=SEQUENCES[(seq+1)%SEQUENCES.length],v2=vids[names[Math.floor(Math.random()*names.length)]];s.globalCompositeOperation='screen';drawCover(s,v2,w,h,.07+p.damage*.11,-gateX*1.5+rand(-8,8),-gateY*1.5+rand(-6,6),1.06);s.globalCompositeOperation='source-over';}
  s.filter='none';
+ drawDuotoneEcho(s,v,w,h,duotone,bass,highs);
+ drawClosingAccumulation(s,w,h,closeBuild,bass);
  const flick=(Math.random()<p.flicker)?rand(.04,.22)*p.flicker:0;
  s.fillStyle=`rgba(226,209,170,${.065+p.damage*.10+flick})`;s.fillRect(0,0,w,h);
  if(hardFlash>0){s.fillStyle=`rgba(255,244,215,${hardFlash})`;s.fillRect(0,0,w,h);hardFlash*=.74;}
  gateX*=.82;gateY*=.82;
  drawColour(w,h,p);
+ if(duotone>0){
+   col.globalCompositeOperation='screen';
+   col.fillStyle=`rgba(164,55,38,${duotone*.075})`;col.fillRect(0,0,w,h);
+   col.globalCompositeOperation='source-over';
+ }
  d.clearRect(0,0,w,h);drawBurns(w,h,bass,p);drawScratchGestures(w,h,p,bass,highs,beatPulse,barPulse);
  if(Math.random()<.026+bass*.025+p.flicker*.045){d.fillStyle=`rgba(255,243,214,${.05+bass*.16+p.flicker*.10})`;d.fillRect(0,0,w,h);}
  if(tearFlash>0){d.fillStyle=`rgba(0,0,0,${tearFlash})`;d.fillRect(0,rand(0,h),w,rand(20,90));tearFlash*=.65;}
@@ -437,11 +498,13 @@ if(grindMoment(t)&&v&&v.duration&&Math.random()<.55){
    d.fillRect(w-18,0,18,h);
  }
  drawDirt(w,h,bass,highs,p);
- if(t>TRACK_SECONDS-7){
- const end=clamp((t-(TRACK_SECONDS-7))/7,0,1);
- const white=clamp((t-(TRACK_SECONDS-7))/2.2,0,1)*(1-end);
- d.fillStyle=`rgba(255,252,238,${white*.85})`;d.fillRect(0,0,w,h);
- s.fillStyle=`rgba(0,0,0,${end})`;s.fillRect(0,0,w,h);
+ if(t>MUSICAL_END){
+ const tailEnd=Math.max(MUSICAL_END+6,audio.duration||TRACK_SECONDS);
+ const end=clamp((t-MUSICAL_END)/(tailEnd-MUSICAL_END),0,1);
+ const white=clamp((t-MUSICAL_END)/1.6,0,1)*(1-clamp((t-MUSICAL_END)/3.4,0,1));
+ d.fillStyle=`rgba(255,247,224,${white*.58})`;d.fillRect(0,0,w,h);
+ s.fillStyle=`rgba(0,0,0,${Math.pow(end,.72)})`;s.fillRect(0,0,w,h);
+ col.fillStyle=`rgba(0,0,0,${end*.72})`;col.fillRect(0,0,w,h);
 }
 }
 async function start(){
