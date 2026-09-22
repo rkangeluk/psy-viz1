@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Novalis — Visualizer Final</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#020405;color:#d8dcda;font:12px/1.4 Arial,sans-serif}#wrap{position:relative;width:100%;height:100vh;background:#020405;overflow:hidden}canvas{position:absolute;inset:0;width:100%;height:100%}#scene{z-index:1}#fx{z-index:2;pointer-events:none}#veil{position:absolute;inset:0;z-index:3;pointer-events:none;background:radial-gradient(ellipse at center,transparent 42%,rgba(0,5,7,.55) 100%);box-shadow:inset 0 0 100px rgba(0,0,0,.65)}
+.ui{position:absolute;z-index:10;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.7rem;padding:.65rem .8rem;background:rgba(226,231,227,.88);color:#252a29;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none}#wrap:hover .ui,#wrap.ui-open .ui{opacity:1;transform:none;pointer-events:auto}.btn{all:unset;cursor:pointer;width:36px;height:36px;text-align:center;border-radius:50%;background:rgba(0,0,0,.06)}.label{min-width:48px;text-align:right}.grow{flex:1}input[type=range]{appearance:none;height:4px;background:rgba(0,0,0,.2);border-radius:10px}input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:#303735}
+#starter{position:absolute;inset:0;z-index:20;display:block;overflow:hidden;background:#111}
+#starter:before{content:"";position:absolute;inset:-1px;background:url("covers/psy_cover.jpeg") center/cover no-repeat;filter:grayscale(.68) contrast(.74) brightness(.47) saturate(.58);transform:scale(1.002);transition:filter .35s ease}
+#starter:after{content:"";position:absolute;inset:0;background:url("covers/psy_cover.jpeg") center/cover no-repeat;filter:grayscale(0) saturate(.72) brightness(.55) contrast(.82);opacity:.38;clip-path:polygon(0 13%,39% 9%,45% 39%,33% 60%,4% 55%,0 45%,0 13%,58% 43%,100% 32%,100% 84%,71% 89%,54% 68%);transform:translateX(-2px);pointer-events:none;transition:opacity .35s ease,filter .35s ease,transform .35s ease}
+#starter:hover:before{filter:grayscale(.58) contrast(.76) brightness(.51) saturate(.68)}
+#starter:hover:after{opacity:.48;filter:grayscale(0) saturate(.82) brightness(.59) contrast(.84);transform:translateX(0)}
+.starter-grid{position:absolute;z-index:2;inset:0;padding:clamp(22px,4vw,54px) clamp(24px,5vw,70px);box-sizing:border-box;display:grid;grid-template-rows:auto 1fr auto;color:rgba(244,244,238,.94);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.18em;text-transform:uppercase}
+.starter-top,.starter-bottom{display:flex;justify-content:space-between;align-items:center;font-size:clamp(9px,.82vw,13px);white-space:nowrap}
+.starter-top{padding-bottom:14px;border-bottom:1px solid rgba(244,244,238,.76)}
+.starter-bottom{padding-top:14px;border-top:1px solid rgba(244,244,238,.76)}
+.starter-center{display:flex;align-items:center;justify-content:center}
+.start{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-width:88px;color:rgba(248,248,242,.96);font:500 clamp(9px,.78vw,12px)/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.34em;text-indent:.34em}
+.play-mark{width:0;height:0;border-top:14px solid transparent;border-bottom:14px solid transparent;border-left:22px solid transparent;filter:drop-shadow(0 0 0 rgba(0,0,0,0));position:relative;transition:.18s ease}
+.play-mark:before{content:"";position:absolute;left:-21px;top:-13px;width:20px;height:26px;clip-path:polygon(0 0,100% 50%,0 100%,0 92%,84% 50%,0 8%);background:rgba(248,248,242,.96)}
+.start:hover .play-mark{border-left-color:rgba(248,248,242,.96)}
+.start:hover .play-mark:before{opacity:0}
+.start:focus-visible{outline:1px solid rgba(248,248,242,.9);outline-offset:10px}
+.start:disabled{cursor:wait}
+.start:disabled .play-mark{display:none}
+#status{position:absolute;z-index:3;left:50%;top:50%;transform:translate(-50%,36px);min-height:18px;color:rgba(248,248,242,.9);font:500 clamp(9px,.78vw,12px)/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.28em;text-transform:uppercase;white-space:nowrap}
+#starter.loading .start-label{opacity:0}
+#starter.loading #status:before{content:"";display:block;width:26px;height:26px;margin:0 auto 15px;border:1px solid rgba(248,248,242,.28);border-top-color:rgba(248,248,242,.95);border-radius:50%;animation:starterSpin .85s linear infinite}
+@keyframes starterSpin{to{transform:rotate(360deg)}}
+@media(max-width:700px){.starter-grid{padding:22px 20px}.starter-top,.starter-bottom{font-size:9px;letter-spacing:.13em}.starter-bottom .system-id{max-width:45%;overflow:hidden;text-overflow:ellipsis}}
+
+/* Cirka activation transition v2: colour separation -> viscous rupture -> reveal. */
+#activationFx{position:absolute;inset:0;z-index:4;pointer-events:none;opacity:0;overflow:hidden}
+#activationFx .rupture{position:absolute;inset:-1px;background:url("covers/psy_cover.jpeg") center/cover no-repeat;opacity:0;will-change:transform,opacity,filter}
+#activationFx .r1{clip-path:polygon(0 7%,100% 3%,100% 28%,0 33%)} #activationFx .r2{clip-path:polygon(0 31%,100% 27%,100% 54%,0 59%)} #activationFx .r3{clip-path:polygon(0 57%,100% 52%,100% 78%,0 83%)} #activationFx .r4{clip-path:polygon(0 80%,100% 75%,100% 100%,0 100%)}
+#starter.activating #activationFx{opacity:1} #starter.activating #activationFx .rupture{animation:colourRupture .82s cubic-bezier(.18,.72,.22,1) both}
+#starter.activating #activationFx .r1{--dx:-2.6%;--sy:1.018} #starter.activating #activationFx .r2{--dx:2.1%;--sy:1.045;animation-delay:.025s} #starter.activating #activationFx .r3{--dx:-1.7%;--sy:.975;animation-delay:.045s} #starter.activating #activationFx .r4{--dx:3%;--sy:1.028;animation-delay:.015s}
+#starter.activating:before{animation:coverViscosity .82s cubic-bezier(.18,.72,.22,1) both} #starter.activating:after{animation:colourRelease .82s cubic-bezier(.18,.72,.22,1) both}
+#starter.activating .starter-top,#starter.activating .starter-bottom{animation:gridResistance .82s steps(1,end) both} #starter.activating .starter-center{animation:playImpulseV2 .82s cubic-bezier(.18,.72,.22,1) both} #starter.activating #status{display:none}
+@keyframes colourRupture{0%,17%{opacity:0;transform:translateX(0);filter:grayscale(0) saturate(.72) brightness(.53)}27%{opacity:.2;transform:translateX(calc(var(--dx)*.28));filter:grayscale(0) saturate(.92) brightness(.57)}43%{opacity:.46;transform:translateX(var(--dx)) scaleY(var(--sy));filter:grayscale(0) saturate(1.05) brightness(.60)}57%{opacity:.34;transform:translateX(calc(var(--dx)*.62));filter:grayscale(0) saturate(.9) brightness(.56)}68%{opacity:.52;transform:translateX(calc(var(--dx)*1.18)) scaleY(var(--sy));filter:grayscale(0) saturate(.96) brightness(.54)}82%{opacity:.18;transform:translateX(calc(var(--dx)*1.7))}100%{opacity:0;transform:translateX(calc(var(--dx)*2.15)) scaleY(1.02)}}
+@keyframes coverViscosity{0%,16%{transform:scale(1.002);filter:grayscale(.68) contrast(.74) brightness(.47) saturate(.58);opacity:1}30%{transform:scale(1.006) translateX(-.18%);filter:grayscale(.54) contrast(.76) brightness(.49) saturate(.72)}47%{transform:scale(1.012) translateX(.36%) skewX(-.18deg);filter:grayscale(.38) contrast(.8) brightness(.51) saturate(.86)}62%{transform:scale(1.017,1.025) translateX(-.24%);filter:grayscale(.22) contrast(.83) brightness(.52) saturate(.98);opacity:.92}74%{transform:scale(1.021,1.012) translateX(.52%);filter:grayscale(.16) contrast(.86) brightness(.5) saturate(1.02);opacity:.72}100%{transform:scale(1.035) translateX(-.7%);filter:grayscale(.08) contrast(.88) brightness(.44) saturate(.94);opacity:0}}
+@keyframes colourRelease{0%,15%{opacity:.38;transform:translateX(-2px)}32%{opacity:.52;transform:translateX(.35%) scale(1.004)}49%{opacity:.7;transform:translateX(-.65%) scale(1.012,1.025)}65%{opacity:.56;transform:translateX(1.05%) scale(1.018,.99)}79%{opacity:.3;transform:translateX(-1.4%) scale(1.026)}100%{opacity:0;transform:translateX(2.1%) scale(1.035)}}
+@keyframes playImpulseV2{0%{transform:scale(1);opacity:1}12%{transform:scale(.72)}25%{transform:scale(1.04);opacity:.95}52%{transform:scale(.98);opacity:.82}72%{transform:scale(.96);opacity:.48}100%{transform:scale(.92);opacity:0}}
+@keyframes gridResistance{0%,62%{transform:translateX(0);opacity:1}67%{transform:translateX(9px);opacity:1}70%{transform:translateX(-5px);opacity:.92}73%{transform:translateX(2px);opacity:.82}78%,100%{transform:translateX(0);opacity:0}}
+@media (prefers-reduced-motion:reduce){#starter.activating:before,#starter.activating:after,#starter.activating .starter-top,#starter.activating .starter-bottom,#starter.activating .starter-center,#starter.activating #activationFx .rupture{animation:none!important}#starter.activating{transition:opacity .18s linear;opacity:0}}
+
+.hiddenVideo{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+#notation,#codeLeak{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+#notation{z-index:7;color:rgba(239,242,235,.92)}
+#codeLeak{z-index:6;color:rgba(220,226,221,.76);mix-blend-mode:screen}
+.note{position:absolute;white-space:pre;opacity:0;font-family:"Segoe Print","Bradley Hand","Comic Sans MS",cursive;font-size:clamp(34px,3.15vw,56px);line-height:1.12;letter-spacing:.025em;font-weight:400;text-shadow:0 2px 3px rgba(0,0,0,.78);transform:rotate(var(--rot,0deg))}
+.note strong{font-size:1.42em;font-weight:500;letter-spacing:.035em}
+.note small{font-size:.66em;line-height:1.28;letter-spacing:.045em}
+.note:before{content:"";position:absolute;width:clamp(60px,7vw,120px);height:1px;background:currentColor;opacity:.66;top:-10px;left:0}
+.note.cross:after{content:"+";position:absolute;left:-28px;top:-23px;font:300 1.2em/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:.58}
+.note.rule-right:before{left:auto;right:0}
+.codeLeak{position:absolute;white-space:pre;font:500 clamp(13px,1.08vw,19px)/1.30 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.015em;text-transform:none;text-shadow:0 1px 2px rgba(0,0,0,.9);opacity:0}
+.codeLeak.cut{clip-path:inset(18% 0 22% 0)}
+#codeBlackout{position:absolute;inset:0;z-index:8;display:none;align-items:center;justify-content:center;background:#010203;color:#e7ece8;font:500 clamp(20px,2.2vw,38px)/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.015em;white-space:pre}
+@media(max-width:700px){.note{font-size:clamp(26px,6.3vw,38px)}.codeLeak{font-size:clamp(10px,2.4vw,14px)}}
+/* Safari/WebKit compatibility: keep overlays out of fragile compositor paths. */
+html.safari #codeLeak{mix-blend-mode:normal;color:rgba(220,226,221,.82)}
+html.safari #notation,html.safari #codeLeak,html.safari #codeBlackout{
+  -webkit-transform:translateZ(0);transform:translateZ(0);
+  -webkit-backface-visibility:hidden;backface-visibility:hidden
+}
+html.safari #scene{-webkit-transform:translateZ(0);transform:translateZ(0)}
+</style>
+</head><body><div id="wrap">
+<canvas id="scene"></canvas><canvas id="fx"></canvas><div id="veil"></div>
+<div class="ui"><button id="play" class="btn">▶</button><span id="time" class="label">0:00</span><input id="seek" class="grow" type="range" min="0" max="1" step=".001" value="0"><span id="dur" class="label">5:15</span><input id="vol" type="range" min="0" max="1" step=".01" value=".9" style="width:100px"></div>
+<div id="codeLeak"></div><div id="notation"></div><div id="codeBlackout"></div>
+<div id="starter">
+  <div id="activationFx" aria-hidden="true">
+    <div class="rupture r1"></div><div class="rupture r2"></div>
+    <div class="rupture r3"></div><div class="rupture r4"></div>
+  </div>
+  <div class="starter-grid">
+    <div class="starter-top"><span class="track-title"></span><span class="starter-duration">05:15</span></div>
+    <div class="starter-center"><button id="start" class="start" aria-label="Play Novalis"><span class="play-mark" aria-hidden="true"></span><span class="start-label">PLAY</span></button></div>
+    <div class="starter-bottom"><span class="starter-bpm">130 BPM</span><span class="system-id">STATE / INDETERMINATE</span></div>
+  </div>
+  <div id="status" aria-live="polite"></div>
+</div>
+<audio id="audio" preload="metadata" crossorigin="anonymous"></audio>
+</div><script>
+const IS_SAFARI=/Safari\//.test(navigator.userAgent)&&!/Chrome\//.test(navigator.userAgent)&&!/Chromium\//.test(navigator.userAgent)&&!/CriOS\//.test(navigator.userAgent)&&!/FxiOS\//.test(navigator.userAgent);
+if(IS_SAFARI)document.documentElement.classList.add('safari');
+const CONFIG={title:'Novalis',bpm:130,bars:167,audio:'novalis.mp3',cover:'covers/psy_cover.jpeg',visualEnd:315,fadeStart:307,videoBase:'https://pub-72e9e2f20fd24867ab095d7021d419db.r2.dev/novalis/'};
+const CLIP_META={
+  corridor:{duration:42+23/30,role:'space',weight:1.15,process:1.05},
+  empty_classroom:{duration:26+18/30,role:'space',weight:1.05,process:1.0},
+  escalator:{duration:30+11/30,role:'space',weight:1.15,process:1.08},
+  factory:{duration:34+4/30,role:'system',weight:1.2,process:1.18},
+  isolation:{duration:28+27/30,role:'human',weight:.82,process:.82},
+  landline:{duration:25+15/30,role:'system',weight:1.08,process:1.65},
+  stare:{duration:30+10/30,role:'stare',weight:.34,process:.48},
+  traffic_lights:{duration:39+10/30,role:'system',weight:.86,process:1.05},
+  vigil:{duration:33+29/30,role:'human',weight:.68,process:.78}
+};
+const CLIPS=Object.keys(CLIP_META);
+const GROUPS={space:['corridor','empty_classroom','escalator'],system:['factory','landline','traffic_lights'],human:['isolation','vigil'],stare:['stare']};
+const clipState=Object.fromEntries(CLIPS.map(n=>[n,{uses:0,lastUsed:-999,lastZone:-1,zonesUsed:new Set(),lastPos:null}]));
+const ZONES=7,SAFE_HEAD=.8,SAFE_TAIL=1.2;
+const BPM=CONFIG.bpm,SPB=60/BPM,BAR=SPB*4,atBar=b=>(b-1)*BAR;
+const BREAK_START=atBar(93),BREAK_END=atBar(113),FINAL_START=atBar(161);
+const wrap=document.querySelector('#wrap'),canvas=document.querySelector('#scene'),fxCanvas=document.querySelector('#fx'),ctx=canvas.getContext('2d',{alpha:false}),fx=fxCanvas.getContext('2d');
+const audio=document.querySelector('#audio'),starter=document.querySelector('#starter'),startBtn=document.querySelector('#start'),statusEl=document.querySelector('#status'),playBtn=document.querySelector('#play'),seek=document.querySelector('#seek'),vol=document.querySelector('#vol'),timeEl=document.querySelector('#time'),durEl=document.querySelector('#dur');
+document.title=CONFIG.title+' — Visualizer Final';
+document.querySelector('.track-title').textContent=CONFIG.title;
+document.querySelector('.starter-duration').textContent=`${Math.floor(CONFIG.visualEnd/60)}:${String(Math.floor(CONFIG.visualEnd%60)).padStart(2,'0')}`;
+document.querySelector('.starter-bpm').textContent=CONFIG.bpm+' BPM';
+audio.src=CONFIG.audio;
+const rand=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),fmt=t=>`${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}`;
+let W=0,H=0,DPR=1,vids={},active=null,secondary=null,playing=false,audioCtx,analyser,source,gain,freq,timeData,lastBeat=-1,lastBar=-1,lastRender=0;
+let nextCut=0,cutToken=0,baselineX=0,baselineY=0,baseZoom=1.015,contrast=1.12,saturation=.42,cold=.12;
+let pulse={amp:0,voice:'A'},temporal=null,persist=null,falseCut=null,regionFault=null,freezeFrame=null,frameCache=document.createElement('canvas'),cacheCtx=frameCache.getContext('2d');
+let nextMicro=18,nextFalsePulse=72,quality=1,fpsCount=0,fpsT=performance.now(),lastClipName=null;
+let flashIntrusion=null,softFault=null,failedEscape=null,crushFrame=0,verticalKick=0;
+let openingShudderDone=false,openingShudderUntil=0,shudderLevel=0;
+const clipShudderDone={isolation:false,stare:false}; let activeSince=0;
+function triggerShudder(t,level=1){shudderLevel=level;const dur=level===1?.32:level===2?.40:.48;openingShudderUntil=t+dur;capture();const dx=level===1?11:level===2?16:22,dy=level===1?-4:level===2?-6:-8;baselineX+=dx;baselineY+=dy;setTimeout(()=>{baselineX-=dx;baselineY-=dy},dur*1000);}
+const notation=document.getElementById('notation');let noteQueue=[],noteIndex=0,activeNotes=[];
+const codeLeakLayer=document.getElementById('codeLeak'),codeBlackout=document.getElementById('codeBlackout');
+let codeLeaks=[],codeEvents=[],blackoutUntil=0,lastEscalatorOverload=-999;
+function leakCode(t,dur,text,x=null,y=null,cut=true){
+ let lines=String(text).split('\n').filter(v=>v.trim().length);
+ const target=Math.random()<.72?(Math.random()<.55?5:7):3;
+ const live=[
+   `const t = ${Number(t).toFixed(3)};`,
+   `const source = '${currentName()}.mp4';`,
+   `const zone = ${Math.max(0,clipState[currentName()]?.lastZone??0)+1};`,
+   `const beat = ${Math.floor(t/SPB)};`,
+   `const bar = ${Math.floor(t/BAR)+1};`,
+   `const rate = ${(active?.playbackRate||1).toFixed(3)};`
+ ];
+ let i=0;while(lines.length<target)lines.push(live[i++%live.length]);
+ if(lines.length>7)lines=lines.slice(0,7);
+ const el=document.createElement('div');el.className='codeLeak'+(cut?' cut':'');el.textContent=lines.join('\n');
+ el.style.left=(x??rand(-4,82))+'%';el.style.top=(y??rand(5,88))+'%';el.style.opacity=String(rand(.48,.82));
+ codeLeakLayer.appendChild(el);codeLeaks.push({el,until:t+dur});
+}
+function updateCodeLeaks(t){
+ for(const e of codeEvents)if(!e.fired&&t>=e.at){e.fired=true;e.fn(t)}
+ codeLeaks=codeLeaks.filter(o=>{if(t>=o.until){o.el.remove();return false}return true});
+ if(blackoutUntil&&t>=blackoutUntil){codeBlackout.style.display='none';blackoutUntil=0}
+}
+function resetCodeLeaks(t){codeLeakLayer.innerHTML='';codeLeaks=[];codeBlackout.style.display='none';blackoutUntil=0;for(const e of codeEvents)e.fired=e.at<t}
+function codeEvent(at,fn){codeEvents.push({at,fn,fired:false})}
+function escalatorOverload(t){
+ if(currentName()!=='escalator')return;
+ // Escalator is intentionally the source most often allowed to become visually overloaded.
+ capture();
+ const mx=W*.07,my=H*.08,ww=W*rand(.46,.60),hh=H*rand(.50,.68);
+ regionFault={until:t+SPB*rand(2.2,3.8),x:rand(mx,W-mx-ww),y:rand(my,H-my-hh),w:ww,h:hh,offset:rand(-20,20),border:true};
+ leakCode(t,rand(.72,1.05),
+`const target = pickEntry(name,t,entryMode);
+if(name === 'escalator') process *= 1.08;
+regionFault.until = t + SPB * 3;
+active.playbackRate = ${Number(active?.playbackRate||1).toFixed(3)};
+capture();
+ctx.drawImage(frameCache, x, y, w, h);`,
+rand(38,68),rand(8,48),false);
+ const zones=['ul','ur','lr','lm'],z=zones[(Math.random()*zones.length)|0],spots=NOTE_ZONES[z],p=spots[(Math.random()*spots.length)|0];
+ const el=document.createElement('div');el.className='note cross';
+ el.innerHTML='<strong>Δt = -08 f</strong><br><small>escalator.mp4<br>WINDOW / HOLD</small>';
+ el.style.left=p[0]+'%';el.style.top=p[1]+'%';el.style.opacity='.94';el.style.setProperty('--rot',rand(-2,2)+'deg');
+ notation.appendChild(el);activeNotes.push({el,until:t+rand(.65,.95)});
+}
+
+const NOTE_ZONES={
+ ul:[[-2,7],[5,12],[12,5],[7,22]],
+ ur:[[62,7],[72,13],[81,5],[66,23]],
+ lr:[[62,69],[73,78],[84,70],[68,87]],
+ lm:[[-1,60],[8,69],[18,78],[4,86]]
+};
+function addNote(at,dur,zone,primary,support='',action=null){noteQueue.push({at,dur,zone,primary,support,action,fired:false})}
+function showNote(n,t){
+ const el=document.createElement('div'),spots=NOTE_ZONES[n.zone],pos=spots[noteIndex++%spots.length];
+ const right=(n.zone==='lr'||noteIndex%4===0);
+ el.className='note '+(Math.random()<.68?'cross ':'')+(right?'rule-right':'');
+ const primary=typeof n.primary==='function'?n.primary():n.primary;
+ const support=typeof n.support==='function'?n.support():n.support;
+ el.innerHTML='<strong>'+primary+'</strong>'+(support?'<br><small>'+support.replace(/\n/g,'<br>')+'</small>':'');
+ el.style.left=pos[0]+'%';el.style.top=pos[1]+'%';el.style.opacity=String(rand(.84,.99));
+ el.style.setProperty('--rot',rand(-2.2,2.2).toFixed(2)+'deg');
+ if(right)el.style.textAlign='right';
+ notation.appendChild(el);activeNotes.push({el,until:t+n.dur});
+ // Often create a second, briefer working-note fragment elsewhere: readable individually,
+ // impossible to comfortably parse together.
+ if(Math.random()<.62){
+   const zones=Object.keys(NOTE_ZONES).filter(z=>z!==n.zone),z=zones[(Math.random()*zones.length)|0],spots2=NOTE_ZONES[z],p2=spots2[(Math.random()*spots2.length)|0];
+   const e2=document.createElement('div');e2.className='note cross';
+   const scraps=['t = '+sourceTime(),'ZONE '+zoneNo()+' / 07','Δf '+(Math.random()<.5?'-04':'-08'),'BAR '+(Math.floor(t/BAR)+1)+' / 167','SRC '+sourceNo()+' / 09','13.8461538 f'];
+   e2.innerHTML='<small>'+scraps[(Math.random()*scraps.length)|0]+'<br>'+scraps[(Math.random()*scraps.length)|0]+'</small>';
+   e2.style.left=p2[0]+'%';e2.style.top=p2[1]+'%';e2.style.opacity=String(rand(.72,.94));e2.style.setProperty('--rot',rand(-2.8,2.8).toFixed(2)+'deg');
+   notation.appendChild(e2);activeNotes.push({el:e2,until:t+n.dur*rand(.55,.88)});
+ }
+ if(n.action)n.action(t);
+}
+function updateNotes(t){
+ for(const n of noteQueue)if(!n.fired&&t>=n.at){n.fired=true;showNote(n,t)}
+ activeNotes=activeNotes.filter(o=>{if(t>=o.until){o.el.remove();return false}return true})
+}
+function resetNotes(t){notation.innerHTML='';activeNotes=[];for(const n of noteQueue)n.fired=n.at<t}
+
+function insetWindow(t,frames=-6,fraction=.5,beats=2){
+ capture();
+ const marginX=W*rand(.055,.11),marginY=H*rand(.075,.16);
+ const maxW=W-marginX*2,maxH=H-marginY*2;
+ const ww=Math.min(maxW,W*fraction),hh=H*rand(.48,.72);
+ const x=rand(marginX,Math.max(marginX,W-marginX-ww));
+ const y=rand(marginY,Math.max(marginY,H-marginY-hh));
+ regionFault={until:t+SPB*beats*.92,x,y,w:ww,h:hh,offset:Math.sign(frames)*Math.max(8,Math.abs(frames)*2.1),border:true,labelFrames:frames};
+}
+function bigWindow(t,frames=-6,fraction=.5,side='right',beats=2){insetWindow(t,frames,fraction,beats)}
+function rateIncident(t,rate=.625,beats=4){
+ if(!active)return;
+ active.playbackRate=rate;
+ setTimeout(()=>{if(active)active.playbackRate=.96},Math.max(80,beats*SPB*1000));
+}
+function sourceNo(){return String(Math.max(0,CLIPS.indexOf(currentName()))+1).padStart(2,'0')}
+function zoneNo(){return String(Math.max(0,clipState[currentName()]?.lastZone??0)+1).padStart(2,'0')}
+function sourceFile(){return currentName()+'.mp4'}
+function sourceTime(){return active&&isFinite(active.currentTime)?active.currentTime.toFixed(3):'0.000'}
+function installNotes(){
+ noteQueue.length=0;
+ addNote(atBar(17),.72,'ul','130 BPM | 30 FPS','1 BEAT = 13.8461538 f\n1 BAR = 55.384615 f');
+ addNote(atBar(33),.62,'lm','16 BAR UNIT','29.538462 s');
+ addNote(atBar(49),.78,'ul',()=>sourceFile(),()=>`SOURCE ${sourceNo()} / 09\nZONE ${zoneNo()} / 07`);
+ addNote(atBar(65),.82,'lr','Δt = -06 f','WINDOW 1/2\nDELAYED · 02 BEATS',t=>bigWindow(t,-6,.5,'right',2));
+ addNote(atBar(73),.68,'lr','RATE .625',()=>`${sourceFile()}\n04 BEATS · RETURN 1.000`,t=>rateIncident(t,.625,4));
+ addNote(atBar(81),.72,'ul','SCORE = W × AGE × COVERAGE','RECENCY > 18.0\nREPEAT × .05');
+ addNote(atBar(84),.52,'lm','83.5 / 167','MIDPOINT');
+ addNote(atBar(93),1.45,'lm','BAR 93 / 167','BREAK / 20 BAR');
+ addNote(atBar(101),1.55,'ul','13.8461538','130 / 30\nSYNC ≠ LOCK');
+ addNote(atBar(113),.60,'lm','113 : 00','RETURN');
+ addNote(atBar(121),.82,'lr','Δt = -08 f',()=>`${sourceFile()}\nWINDOW 2/3 · DELAYED`,t=>bigWindow(t,-8,.66,'left',2));
+ addNote(atBar(129),.68,'lr','SAT .18','CONTRAST 1.42\nCROP 1.027');
+ addNote(atBar(137),.68,'lr','RATE 1.480',()=>`${sourceFile()}\n04 BEATS · RETURN .960`,t=>rateIncident(t,1.48,4));
+ addNote(atBar(145),.64,'ul','Δt = -04 f','RATE 1.000\nSTATUS NOMINAL'); // intentionally unreliable late
+ addNote(atBar(153),.72,'lr',()=>'/'+sourceFile(),()=>`t = ${sourceTime()}\nSOURCE ${sourceNo()} / 09 · ZONE ${zoneNo()} / 07`);
+ addNote(atBar(161),.62,'lm','161 / 167','TERMINAL UNIT');
+}
+installNotes();
+// Rare engineering leakage: now generous enough to read as a breach in the rendered surface.
+codeEvent(atBar(41),t=>leakCode(t,.72,
+`let score = meta.weight * (1 + Math.min(age / 28, 2.6));
+score *= 1 + Math.max(0,(minUses + 1) - st.uses) * 1.7;
+if(name === lastClipName) score *= .05;
+if(st.lastUsed > t - 18) score *= .22;`,
+rand(-3,48),rand(8,58)));
+codeEvent(atBar(65)-.14,t=>leakCode(t,.78,
+`capture();
+regionFault = {
+  until: t + SPB * 2,
+  x, y, w, h,
+  offset: -12,
+  border: true
+};`,
+rand(42,67),rand(17,54)));
+codeEvent(atBar(73)-.12,t=>leakCode(t,.68,
+`active.playbackRate = .625;
+setTimeout(() => {
+  if(active) active.playbackRate = .96;
+}, 4 * SPB * 1000);`,
+rand(-3,47),rand(53,77)));
+codeEvent(atBar(105),t=>leakCode(t,.82,
+`const target = pickEntry(name,t,entryMode);
+if(isFinite(target)) v.currentTime = target;
+v.playbackRate = rand(.90,1.025);
+await v.play();`,
+rand(38,64),rand(5,40)));
+codeEvent(atBar(129)-.10,t=>leakCode(t,.76,
+`ctx.filter =
+  'brightness(' + bright + ')' +
+  ' contrast(' + cont + ')' +
+  ' saturate(' + sat + ')';`,
+rand(0,48),rand(12,64)));
+codeEvent(atBar(145),t=>leakCode(t,.90,
+`if(name === 'stare') score *= .34;
+if(name === lastClipName) score *= .05;
+return { name, score };`,
+rand(47,72),rand(39,69),false));
+codeEvent(atBar(156),t=>leakCode(t,.78,
+`active.currentTime = Math.max(
+  SAFE_HEAD,
+  active.currentTime - .42
+);
+scheduleMicro(t);`,
+rand(-4,58),rand(6,70)));
+// On selected structural points the human notes and engineering layer leak through together.
+codeEvent(atBar(49)+.04,t=>leakCode(t,.66,
+`const st = clipState[name];
+const meta = CLIP_META[name];
+const age = Math.max(0,t - st.lastUsed);
+let score = meta.weight * (1 + Math.min(age / 28,2.6));`,
+rand(44,70),rand(42,72),false));
+codeEvent(atBar(81)+.03,t=>leakCode(t,.74,
+`let candidates = [...Array(ZONES).keys()]
+  .filter(z => !st.zonesUsed.has(z) && z !== st.lastZone);
+if(!candidates.length) st.zonesUsed.clear();`,
+rand(-3,45),rand(28,66)));
+codeEvent(atBar(121)+.03,t=>leakCode(t,.82,
+`const ww = Math.min(W * fraction,W - marginX * 2);
+const hh = H * rand(.48,.72);
+regionFault = { until:t + SPB * beats * .92, x,y,w:ww,h:hh };`,
+rand(46,70),rand(8,48),false));
+codeEvent(atBar(159),t=>{codeBlackout.textContent='requestAnimationFrame(render);';codeBlackout.style.display='flex';blackoutUntil=t+.095});
+
+
+function resize(){DPR=Math.min(devicePixelRatio||1,1.5);W=innerWidth;H=innerHeight;for(const c of [canvas,fxCanvas]){c.width=Math.round(W*DPR);c.height=Math.round(H*DPR);c.style.width=W+'px';c.style.height=H+'px';c.getContext('2d').setTransform(DPR,0,0,DPR,0,0)}frameCache.width=Math.round(W*DPR);frameCache.height=Math.round(H*DPR);cacheCtx.setTransform(DPR,0,0,DPR,0,0)}addEventListener('resize',resize);resize();
+function makeVideos(){for(const name of CLIPS){let v=document.createElement('video');v.className='hiddenVideo';v.src=CONFIG.videoBase+name+'.mp4';v.muted=true;v.loop=true;v.playsInline=true;v.preload='auto';v.crossOrigin='anonymous';document.body.appendChild(v);vids[name]=v}}
+function ready(v){return new Promise(r=>{if(v.readyState>=2)return r();let done=()=>{v.removeEventListener('canplay',done);r()};v.addEventListener('canplay',done);setTimeout(done,5000)})}
+function zoneStart(name,zone){
+  const d=CLIP_META[name].duration,usable=Math.max(2,d-SAFE_HEAD-SAFE_TAIL),zw=usable/ZONES;
+  return SAFE_HEAD+zone*zw+rand(.10,.72)*zw;
+}
+function pickEntry(name,t,mode='fresh'){
+  const st=clipState[name],d=CLIP_META[name].duration;
+  if(mode==='continue'&&st.lastPos!=null)return clamp(st.lastPos+rand(1.8,4.8),SAFE_HEAD,d-SAFE_TAIL);
+  if(mode==='reverse'&&st.lastPos!=null)return clamp(st.lastPos-rand(2.2,6.2),SAFE_HEAD,d-SAFE_TAIL);
+  let candidates=[...Array(ZONES).keys()].filter(z=>!st.zonesUsed.has(z)&&z!==st.lastZone);
+  if(!candidates.length){st.zonesUsed.clear();candidates=[...Array(ZONES).keys()].filter(z=>z!==st.lastZone)}
+  const zone=candidates[(Math.random()*candidates.length)|0];
+  st.zonesUsed.add(zone);st.lastZone=zone;
+  return clamp(zoneStart(name,zone),SAFE_HEAD,d-SAFE_TAIL);
+}
+async function activate(name,entryMode='fresh'){
+  const token=++cutToken,v=vids[name],st=clipState[name];await ready(v);if(token!==cutToken)return;
+  try{
+    const target=pickEntry(name,audio.currentTime,entryMode);
+    if(isFinite(target))v.currentTime=target;
+    v.playbackRate=rand(.90,1.025);
+    await v.play();
+  }catch(e){}
+  if(token!==cutToken)return;
+  if(lastClipName&&active&&isFinite(active.currentTime))clipState[lastClipName].lastPos=active.currentTime;
+  secondary=active;active=v;lastClipName=name;activeSince=audio.currentTime;st.uses++;st.lastUsed=audio.currentTime;st.lastPos=v.currentTime;
+  for(const [n,o] of Object.entries(vids))if(o!==active&&o!==secondary)o.pause();
+}
+function phase(t){if(t<atBar(33))return 0;if(t<atBar(49))return 1;if(t<atBar(65))return 2;if(t<atBar(81))return 3;if(t<BREAK_START)return 4;if(t<BREAK_END)return 5;if(t<atBar(129))return 6;if(t<atBar(145))return 7;if(t<FINAL_START)return 8;return 9}
+function poolFor(t){let p=phase(t);if(p<=1)return [...GROUPS.space,...GROUPS.system.slice(0,1)];if(p<=3)return [...GROUPS.space,...GROUPS.system];if(p===4)return [...GROUPS.space,...GROUPS.system,...GROUPS.human];if(p===5)return ['empty_classroom','landline','traffic_lights'];if(p===6)return [...GROUPS.system,...GROUPS.space,'isolation'];if(p===7)return [...GROUPS.space,...GROUPS.system,...GROUPS.human];if(p===8)return [...CLIPS];return ['stare','corridor','traffic_lights','isolation']}
+function chooseClip(t){
+  let pool=poolFor(t),p=phase(t);
+  // Protect stare until late; permit only subliminal intrusions before bar 129.
+  if(p<7)pool=pool.filter(n=>n!=='stare');
+  const minUses=Math.min(...pool.map(n=>clipState[n].uses));
+  let scored=pool.map(name=>{
+    const st=clipState[name],meta=CLIP_META[name],age=Math.max(0,t-st.lastUsed);
+    let score=meta.weight*(1+Math.min(age/28,2.6));
+    score*=1+(Math.max(0,(minUses+1)-st.uses)*1.7);
+    if(name===lastClipName)score*=.05;
+    if(st.lastUsed>t-18)score*=.22;
+    if(name==='stare')score*=p>=8?1.5:.35;
+    return {name,score};
+  });
+  let total=scored.reduce((s,o)=>s+o.score,0),r=Math.random()*total;
+  for(const o of scored){r-=o.score;if(r<=0)return o.name}
+  return scored[scored.length-1].name;
+}
+function entryModeFor(name,t){
+  const st=clipState[name];
+  if(st.lastPos==null)return 'fresh';
+  const r=Math.random();
+  if(r<.18&&t>70)return 'continue';
+  if(r<.28&&t>105)return 'reverse';
+  return 'fresh';
+}
+function cutInterval(t){if(t>=BREAK_START&&t<BREAK_END)return rand(12,20);let p=phase(t);return [8,7,6,5,4.5,15,4.8,4.2,3.6,5][p]+rand(-1,1)}
+function cover(v,c,x=0,y=0,zoom=1){if(!v||v.readyState<2)return;let vw=v.videoWidth||16,vh=v.videoHeight||9,sc=Math.max(W/vw,H/vh)*zoom,dw=vw*sc,dh=vh*sc;c.drawImage(v,(W-dw)/2+x,(H-dh)/2+y,dw,dh)}
+function capture(){cacheCtx.save();cacheCtx.setTransform(DPR,0,0,DPR,0,0);cacheCtx.clearRect(0,0,W,H);cover(active,cacheCtx,baselineX,baselineY,baseZoom);cacheCtx.restore()}
+function voiceForBeat(t,b){if(t>=BREAK_START&&t<BREAK_END)return 'LOFI';let r=Math.random();if(r<.72)return'A';if(r<.80)return'B';if(r<.87)return'C';if(r<.93)return'D';if(r<.975)return'E';return'EMPTY'}
+function onBeat(t,b){
+ pulse.voice=voiceForBeat(t,b);pulse.amp=pulse.voice==='EMPTY'?0:1;
+ if(b%4===0){
+   lastBar=Math.floor(b/4);
+   if(t>20&&Math.random()<.045&&t<BREAK_START){baselineX+=rand(-2.5,2.5);baselineY+=rand(-1.5,1.5);baseZoom=clamp(baseZoom+rand(0,.0015),1.015,1.045)}
+ }
+ // Large windows are a recurring beat grammar, not isolated decoration.
+ const bar=Math.floor(b/4)+1,beatInBar=b%4,inBreak=t>=BREAK_START&&t<BREAK_END;
+ if(!inBreak&&bar>=33&&beatInBar===0&&bar%4===1&&Math.random()<(bar<113?.48:.66)){
+   capture();const frac=[.36,.48,.60][(bar>>2)%3],mx=W*.07,my=H*.09,ww=Math.min(W*frac,W-2*mx),hh=H*rand(.48,.70);
+   regionFault={until:t+SPB*rand(1.7,3.6),x:rand(mx,W-mx-ww),y:rand(my,H-my-hh),w:ww,h:hh,offset:rand(-18,18),border:true};
+ }
+ if(t>=FINAL_START){pulse.voice='C';}
+}
+function scheduleMicro(t){let p=phase(t),bias=processBias(),intensity=p===0?.30:p===5?.16:clamp(.42+p*.095,.42,1.15);nextMicro=t+rand(5.5,12.5)/(intensity*Math.sqrt(bias))}
+function currentName(){return lastClipName||'corridor'}
+function processBias(){return CLIP_META[currentName()]?.process||1}
+function triggerMicro(t){
+  let p=phase(t),bias=processBias();
+  if(p===0&&Math.random()<.45/bias){scheduleMicro(t);return}
+  let options=p===5?['dup','crop','hold','soft']:
+    ['dup','skip','register','region','region','persist','falsecut','intrude','soft','region','crush'];
+  // Landline gets extra temporal/spatial interference; stare stays mostly intact.
+  if(currentName()==='landline')options.push('region','region','persist','falsecut','soft','dup','intrude');
+  if(currentName()==='stare')options=['dup','hold','soft','register'];
+  let kind=options[(Math.random()*options.length)|0];
+
+  if(kind==='dup'&&active){try{active.currentTime=Math.max(SAFE_HEAD,active.currentTime-rand(.24,.62)*bias)}catch(e){}}
+  if(kind==='skip'&&active){try{active.currentTime=Math.min(CLIP_META[currentName()].duration-SAFE_TAIL,active.currentTime+rand(.20,.52)*bias)}catch(e){}}
+  if(kind==='register'){
+    baselineX+=rand(-14,14)*bias;baselineY+=rand(-6,6)*bias;
+    if(Math.random()<.58)setTimeout(()=>{baselineX*=.62;baselineY*=.62},rand(160,650))
+  }
+  if(kind==='region'){
+    if(busyElsewhere&&Math.random()<.78){scheduleMicro(t);return}
+    capture();
+    const fractions=[.36,.48,.60],frac=fractions[(Math.random()*fractions.length)|0];
+    const mx=W*rand(.055,.11),my=H*rand(.07,.15),ww=Math.min(W*frac,W-2*mx),hh=H*rand(.46,.70);
+    regionFault={until:t+rand(.55,1.25)*bias,x:rand(mx,W-mx-ww),y:rand(my,H-my-hh),w:ww,h:hh,offset:rand(-22,22)*bias,border:true}
+  }
+  if(kind==='soft'){
+    if(busyElsewhere&&Math.random()<.70){scheduleMicro(t);return}
+    capture();const frac=Math.random()<.6?.48:.36,mx=W*.07,my=H*.09,ww=Math.min(W*frac,W-2*mx),hh=H*rand(.42,.66);
+    softFault={until:t+rand(.45,.95)*bias,x:rand(mx,W-mx-ww),y:rand(my,H-my-hh),w:ww,h:hh,alpha:rand(.22,.42)}
+  }
+  if(kind==='persist'){
+    capture();persist={until:t+rand(.20,.60)*bias,x:rand(0,.76)*W,y:rand(0,.74)*H,w:rand(.09,.26)*W,h:rand(.09,.25)*H}
+  }
+  if(kind==='falsecut'&&secondary){falseCut={until:t+rand(.18,.70)*bias,v:secondary}}
+  if(kind==='intrude'){
+    let pool=CLIPS.filter(n=>n!==currentName() && (t>atBar(129)||n!=='stare'));
+    let n=pool[(Math.random()*pool.length)|0],v=vids[n];
+    if(v&&v.readyState>=2)flashIntrusion={until:t+rand(.035,.13)*(p>7?1.7:1),v};
+  }
+  if(kind==='crush')crushFrame=Math.random()<.5?1:2;
+  if(kind==='crop')baseZoom=clamp(baseZoom+.0035*bias,1.015,1.06);
+  if(kind==='hold'){capture();freezeFrame={until:t+(p===5?SPB:rand(.12,.42))};}
+  scheduleMicro(t)
+}
+function gradeFor(t){let p=phase(t);let c=1.10+p*.018,s=.44-p*.018,br=.90;if(t>=BREAK_START&&t<BREAK_END){c=.92;s=.30;br=.84}if(t>=FINAL_START){let q=clamp((t-FINAL_START)/(CONFIG.visualEnd-FINAL_START),0,1);s*=1-q*.9;c+=q*.2;br-=q*.12}return{c,s,br}}
+function draw(t){let g=gradeFor(t);g.s=Math.min(g.s,.42);let decay=pulse.voice==='LOFI'?.78:.62;pulse.amp*=decay;let pa=pulse.amp,zoom=baseZoom,x=baselineX,y=baselineY,bright=g.br,cont=g.c,sat=g.s;
+ switch(pulse.voice){case'A':zoom+=pa*.004;bright-=pa*.025;break;case'B':zoom+=pa*.002;cont-=pa*.14;bright+=pa*.02;break;case'C':zoom+=pa*.006;x+=pa*2;break;case'D':zoom+=pa*.003;break;case'E':x+=pa*4;y-=pa*1.5;break;case'LOFI':zoom+=pa*.002;cont-=pa*.08;bright+=pa*.015;break}
+ ctx.save();ctx.clearRect(0,0,W,H);ctx.fillStyle='#020506';ctx.fillRect(0,0,W,H);
+ const gradeFilter=`brightness(${bright}) contrast(${cont}) saturate(${sat}) sepia(.08) hue-rotate(145deg)`;
+ if(IS_SAFARI){
+   // WebKit fallback: CSS-filter the rendered scene rather than relying on canvas ctx.filter.
+   canvas.style.webkitFilter=gradeFilter;canvas.style.filter=gradeFilter;
+   ctx.filter='none';
+ }else{
+   canvas.style.webkitFilter='none';canvas.style.filter='none';
+   ctx.filter=gradeFilter;
+ }
+ cover(active,ctx,x,y,zoom);ctx.filter='none';
+ if(pulse.voice==='D'&&pa>.08){ctx.globalAlpha=.07*pa;cover(active,ctx,x-5,y,zoom*1.002);ctx.globalAlpha=1}
+ if(falseCut&&t<falseCut.until){ctx.globalAlpha=.96;cover(falseCut.v,ctx,x,y,zoom);ctx.globalAlpha=1}else if(falseCut)falseCut=null;
+ if(freezeFrame&&t<freezeFrame.until){ctx.globalAlpha=.98;ctx.drawImage(frameCache,0,0,frameCache.width,frameCache.height,0,0,W,H);ctx.globalAlpha=1}else if(freezeFrame)freezeFrame=null;
+ if(regionFault&&t<regionFault.until){
+   let r=regionFault;
+   const ry=r.y??0,rh=r.h??H;
+   ctx.drawImage(frameCache,r.x*DPR,ry*DPR,r.w*DPR,rh*DPR,r.x+r.offset,ry,r.w,rh);
+   if(r.border){ctx.save();ctx.strokeStyle='rgba(235,240,232,.72)';ctx.lineWidth=1;ctx.strokeRect(r.x+.5,ry+.5,r.w-1,rh-1);ctx.restore()}
+ }else if(regionFault)regionFault=null;
+ if(persist&&t<persist.until){let q=persist;ctx.globalAlpha=.9;ctx.drawImage(frameCache,q.x*DPR,q.y*DPR,q.w*DPR,q.h*DPR,q.x,q.y,q.w,q.h);ctx.globalAlpha=1}else if(persist)persist=null;
+ if(softFault&&t<softFault.until){let q=softFault,sy=q.y??0,sh=q.h??H;ctx.save();ctx.globalAlpha=q.alpha;
+   if(IS_SAFARI){
+     // Two slightly displaced copies approximate the soft fault without ctx.filter.
+     ctx.drawImage(frameCache,q.x*DPR,sy*DPR,q.w*DPR,sh*DPR,q.x-1.6,sy,q.w,q.h??H);
+     ctx.globalAlpha=q.alpha*.55;
+     ctx.drawImage(frameCache,q.x*DPR,sy*DPR,q.w*DPR,sh*DPR,q.x+1.8,sy,q.w,q.h??H);
+   }else{
+     ctx.filter='blur(1.1px) saturate(.72)';
+     ctx.drawImage(frameCache,q.x*DPR,sy*DPR,q.w*DPR,sh*DPR,q.x+rand(-1.2,1.2),sy,q.w,sh);
+   }
+   ctx.restore()}else if(softFault)softFault=null;
+ if(flashIntrusion&&t<flashIntrusion.until){ctx.globalAlpha=.98;cover(flashIntrusion.v,ctx,x,y,zoom);ctx.globalAlpha=1}else if(flashIntrusion)flashIntrusion=null;
+ if(openingShudderUntil&&t<openingShudderUntil){
+   ctx.save();
+   const bands=shudderLevel===1?7:shudderLevel===2?9:12,bh=H/bands;
+   for(let i=0;i<bands;i++){
+     const yy=i*bh,dx=(i%2?1:-1)*rand(8,shudderLevel===1?24:shudderLevel===2?34:46);
+     ctx.globalAlpha=rand(.55,.9);
+     ctx.drawImage(frameCache,0,yy*DPR,W*DPR,bh*DPR,dx,yy,W,bh);
+   }
+   ctx.globalAlpha=shudderLevel===3?.30:.22;ctx.fillStyle='#dfe5df';ctx.fillRect(0,H*rand(.18,.78),W,rand(1,shudderLevel===3?7:4));
+   ctx.restore();
+ }else if(openingShudderUntil&&t>=openingShudderUntil)openingShudderUntil=0;
+ if(crushFrame>0){ctx.fillStyle='rgba(0,5,6,.22)';ctx.fillRect(0,0,W,H);crushFrame--}
+ ctx.restore();
+ fx.clearRect(0,0,W,H);let slow=clamp((t/CONFIG.visualEnd),0,1);fx.fillStyle=`rgba(2,13,16,${.035+slow*.045})`;fx.fillRect(0,0,W,H);
+ if(t>=CONFIG.fadeStart){let q=clamp((t-CONFIG.fadeStart)/(CONFIG.visualEnd-CONFIG.fadeStart),0,1);fx.fillStyle=`rgba(0,0,0,${q*q})`;fx.fillRect(0,0,W,H)}
+}
+function render(now){requestAnimationFrame(render);if(!playing)return;let target=1000/(quality<.72?30:45);if(now-lastRender<target)return;lastRender=now;let t=audio.currentTime,b=Math.floor(t/SPB);updateNotes(t);updateCodeLeaks(t);
+ if(!openingShudderDone&&t>=5){openingShudderDone=true;triggerShudder(t,1)}
+ if(currentName()==='isolation'&&!clipShudderDone.isolation&&t>=atBar(65)&&t-activeSince>.65){clipShudderDone.isolation=true;triggerShudder(t,2)}
+ if(currentName()==='stare'&&!clipShudderDone.stare&&t>=atBar(113)&&t-activeSince>.45){clipShudderDone.stare=true;triggerShudder(t,3)}
+ if(currentName()==='escalator' && t-lastEscalatorOverload>rand(8,14) && Math.random()<.72){
+   lastEscalatorOverload=t;escalatorOverload(t);
+ }
+ if(b!==lastBeat){lastBeat=b;onBeat(t,b)}if(t>=nextMicro)triggerMicro(t);
+ // deliberately rare false visual kicks
+ if(t>=nextFalsePulse&&t<BREAK_START){pulse.voice='A';pulse.amp=.8;nextFalsePulse+=rand(48,68)}
+ // Protected subliminal stare: increasingly legible, but never routine.
+ const stareMoments=[[atBar(45),.07],[atBar(76),.11],[atBar(121),.22],[atBar(146),.42]];
+ for(const [st,dur] of stareMoments)if(t>=st&&t<st+dur&&!flashIntrusion){let sv=vids.stare;if(sv&&sv.readyState>=2)flashIntrusion={until:st+dur,v:sv}}
+ if(t>=nextCut){
+   const name=chooseClip(t);
+   activate(name,entryModeFor(name,t));
+   nextCut=t+cutInterval(t)
+ }
+ draw(t);seek.value=(audio.duration?audio.currentTime/audio.duration:0);timeEl.textContent=fmt(t);fpsCount++;if(now-fpsT>2500){let fps=fpsCount*1000/(now-fpsT);quality=fps<31?.62:fps<40?.8:1;fpsCount=0;fpsT=now}
+}
+function resetState(){let t=audio.currentTime;resetNotes(t);resetCodeLeaks(t);openingShudderDone=t>=5;openingShudderUntil=0;shudderLevel=0;clipShudderDone.isolation=t>=atBar(65);clipShudderDone.stare=t>=atBar(113);lastBeat=Math.floor(t/SPB)-1;nextCut=t+.1;nextMicro=t+rand(5,10);pulse.amp=0;temporal=persist=falseCut=regionFault=freezeFrame=softFault=flashIntrusion=null;crushFrame=0}
+async function initAudio(){if(audioCtx)return;audioCtx=new (window.AudioContext||window.webkitAudioContext)();source=audioCtx.createMediaElementSource(audio);gain=audioCtx.createGain();analyser=audioCtx.createAnalyser();analyser.fftSize=512;source.connect(gain);gain.connect(analyser);analyser.connect(audioCtx.destination);gain.gain.value=Number(vol.value)}
+async function start(){startBtn.disabled=true;starter.classList.add('loading');statusEl.textContent='LOADING';await initAudio();if(audioCtx.state==='suspended')await audioCtx.resume();let first='corridor';await activate(first);try{
+ statusEl.textContent='STARTING';
+ await audio.play();
+ playing=true;playBtn.textContent='❚❚';nextCut=audio.currentTime+7;scheduleMicro(audio.currentTime);requestAnimationFrame(render);
+ starter.classList.remove('loading');
+ if(matchMedia('(prefers-reduced-motion: reduce)').matches){
+   starter.classList.add('activating');setTimeout(()=>{starter.style.display='none';starter.classList.remove('activating')},180);
+ }else{
+   // Constrained variation: same family of rupture, slightly different horizontal pull each activation.
+   const rs=starter.querySelectorAll('#activationFx .rupture');
+   rs.forEach((el,i)=>{const sign=i%2?-1:1;const mag=(1.9+Math.random()*2.9)*sign;el.style.setProperty('--dx',mag.toFixed(2)+'%')});
+   starter.classList.add('activating');
+   setTimeout(()=>{starter.style.display='none';starter.classList.remove('activating')},840);
+ }
+}catch(e){starter.classList.remove('loading','activating');statusEl.textContent='TAP AGAIN';startBtn.disabled=false}}
+startBtn.onclick=start;playBtn.onclick=async()=>{if(audio.paused){await initAudio();await audio.play();playing=true;playBtn.textContent='❚❚'}else{audio.pause();playing=false;playBtn.textContent='▶'}};seek.oninput=()=>{if(audio.duration){audio.currentTime=Number(seek.value)*audio.duration;resetState()}};vol.oninput=()=>{if(gain)gain.gain.value=Number(vol.value)};audio.onloadedmetadata=()=>{durEl.textContent=fmt(audio.duration||CONFIG.visualEnd)};audio.onended=()=>{playing=false;playBtn.textContent='▶'};
+makeVideos();requestAnimationFrame(render);
+</script></body></html>
