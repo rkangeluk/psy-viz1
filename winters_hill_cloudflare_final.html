@@ -321,7 +321,8 @@ async function usePreparedCut(t){const p=preparedNext;if(p&&p.v&&p.v.readyState>
 function phase(t){if(t<32)return 0;if(t<48)return 1;if(t<64)return 2;if(t<128)return 4;if(t<160)return 5;if(t<224)return 8;return 9}
 function poolFor(t){
  const nature=[...GROUPS.space.filter(n=>n!=='woodland_mist'),...GROUPS.system];
- if(t<32)return nature;
+ // First 16 bars: nature only. No city or estate imagery before bar 17.
+ if(t<32)return GROUPS.space.filter(n=>n!=='woodland_mist');
  if(t<48)return nature;
  if(t<64)return [...nature,'suburban_estate','awkward_people'];
  if(t<128)return [...nature,...GROUPS.human];
@@ -331,7 +332,7 @@ function poolFor(t){
 }
 function chooseClip(t){
   let pool=poolFor(t).filter(n=>n!=='no_blink'&&n!=='woodland_mist'&&CLIP_META[n]&&clipState[n]&&vids[n]),p=phase(t);
-  if(!pool.length)pool=CLIPS.filter(n=>vids[n]);
+  if(!pool.length)pool=CLIPS.filter(n=>vids[n] && (t>=32 || !GROUPS.system.includes(n)) && n!=='woodland_mist' && n!=='no_blink');
   // Protect stare until late; permit only subliminal intrusions before bar 129.
   if(t<64)pool=pool.filter(n=>n!=='shadows_room'&&n!=='figures_at_rest');
   const minUses=Math.min(...pool.map(n=>clipState[n].uses));
@@ -357,13 +358,14 @@ function entryModeFor(name,t){
   if(r<.28&&t>105)return 'reverse';
   return 'fresh';
 }
-// Fixed, non-repeating appearances: gaze twice, mist three times.
+// Fixed, non-repeating appearances: bar-17 urban arrival, gaze twice, mist twice plus finale.
+// At 120 BPM in 4/4, bar 17 begins at 00:32 (not 00:30).
 const SPECIAL_CUES=[
+ {at:32,name:'NYC_afterdark',dur:4},
  {at:108,name:'no_blink',dur:1.1},
  {at:140,name:'woodland_mist',dur:8,wide:true},
- {at:180,name:'woodland_mist',dur:7.5,wide:true},
+ {at:166,name:'woodland_mist',dur:7.5,wide:true},
  {at:202,name:'no_blink',dur:1.1},
- {at:230,name:'woodland_mist',dur:7,wide:true},
  {at:240,name:'woodland_mist',dur:8,wide:true,final:true}
 ];
 // A few deliberate short-shot flurries, aligned to beats or half-bars.
@@ -396,7 +398,7 @@ function nextMusicalCut(t){
  for(const cue of STRUCTURAL_CUES)if(cue>t+.18&&cue<next+.05)next=cue;
  const boundary=nextSpecialBoundary(t);if(boundary!==undefined&&boundary<next)next=boundary;
  for(const cue of BURST_CUTS)if(cue>t+.06&&cue<next)next=cue;
- // Do not cut away while one of the two gaze shots or three mist shots is held.
+ // Do not cut away during a scheduled urban arrival, gaze, or mist shot.
  const special=specialAt(t+.065);if(special)next=Math.min(next,special.at+special.dur);
  return next;
 }
