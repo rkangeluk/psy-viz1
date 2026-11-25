@@ -1,0 +1,48 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>316</title><style>
+html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#d8dcda;font:12px/1.4 Arial,sans-serif}#wrap{position:relative;width:100%;height:100vh;background:#000;overflow:hidden}canvas{position:absolute;inset:0;width:100%;height:100%}#scene{z-index:1}#fx{z-index:2;pointer-events:none}#veil{position:absolute;inset:0;z-index:3;pointer-events:none;background:radial-gradient(ellipse at center,transparent 42%,rgba(0,5,7,.55) 100%);box-shadow:inset 0 0 100px rgba(0,0,0,.65)}
+.ui{position:absolute;z-index:10;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.7rem;padding:.65rem .8rem;background:rgba(226,231,227,.88);color:#252a29;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none}#wrap.ui-open .ui,#wrap .ui:focus-within{opacity:1;transform:none;pointer-events:auto}.btn{all:unset;cursor:pointer;width:36px;height:36px;text-align:center;border-radius:50%;background:rgba(0,0,0,.06)}.label{min-width:48px;text-align:right}.grow{flex:1}input[type=range]{appearance:none;height:4px;background:rgba(0,0,0,.2);border-radius:10px}input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:#303735}
+#starter{position:absolute;inset:0;z-index:20;display:block;overflow:hidden;background:#000}
+.starter-grid{position:absolute;z-index:2;inset:0;padding:clamp(22px,4vw,54px) clamp(24px,5vw,70px);box-sizing:border-box;display:grid;grid-template-rows:auto 1fr auto;color:rgba(244,244,238,.94);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.18em;text-transform:uppercase}
+.starter-top,.starter-bottom{display:flex;justify-content:space-between;align-items:center;font-size:clamp(9px,.82vw,13px);white-space:nowrap}
+.starter-top{padding-bottom:14px;border-bottom:1px solid rgba(244,244,238,.76)}
+.starter-bottom{padding-top:14px;border-top:1px solid rgba(244,244,238,.76)}
+.starter-center{display:flex;align-items:center;justify-content:center}
+.start{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-width:88px;color:rgba(248,248,242,.96);font:500 clamp(9px,.78vw,12px)/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.34em;text-indent:.34em}
+.play-mark{width:0;height:0;border-top:14px solid transparent;border-bottom:14px solid transparent;border-left:22px solid transparent;filter:drop-shadow(0 0 0 rgba(0,0,0,0));position:relative;transition:.18s ease}
+.play-mark:before{content:"";position:absolute;left:-21px;top:-13px;width:20px;height:26px;clip-path:polygon(0 0,100% 50%,0 100%,0 92%,84% 50%,0 8%);background:rgba(248,248,242,.96)}
+.start:hover .play-mark{border-left-color:rgba(248,248,242,.96)}
+.start:hover .play-mark:before{opacity:0}
+.start:focus-visible{outline:1px solid rgba(248,248,242,.9);outline-offset:10px}
+.start:disabled{cursor:wait}
+.start:disabled .play-mark{display:none}
+#status{position:absolute;z-index:3;left:50%;top:50%;transform:translate(-50%,36px);min-height:18px;color:rgba(248,248,242,.9);font:500 clamp(9px,.78vw,12px)/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.28em;text-transform:uppercase;white-space:nowrap}
+#starter.loading .start-label{opacity:0}
+#starter.loading #status:before{content:"";display:block;width:26px;height:26px;margin:0 auto 15px;border:1px solid rgba(248,248,242,.28);border-top-color:rgba(248,248,242,.95);border-radius:50%;animation:starterSpin .85s linear infinite}
+@keyframes starterSpin{to{transform:rotate(360deg)}}
+@media(max-width:700px){.starter-grid{padding:22px 20px}.starter-top,.starter-bottom{font-size:9px;letter-spacing:.13em}.starter-bottom .system-id{max-width:45%;overflow:hidden;text-overflow:ellipsis}}
+
+body{display:grid;place-items:center}#wrap{width:min(100vw,177.777778vh);width:min(100vw,177.777778dvh);height:auto;aspect-ratio:16/9;max-width:100%;max-height:100dvh}#film{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain;object-position:center;background:#000}#wrap:fullscreen{width:100%;height:100%;max-width:none;max-height:none;aspect-ratio:auto}#starter[hidden]{display:none}#wrap:not(.ui-open).active{cursor:none}.ui{box-sizing:border-box}.grow{min-width:0}.btn{flex-shrink:0}.label{font-variant-numeric:tabular-nums}#vol{width:100px}@media(max-width:500px){#vol{width:48px}.ui{gap:.4rem}.label{min-width:36px}}#starter.loading .start-label{opacity:0}#status{pointer-events:none}#starter.loading #status{transform:translate(-50%,0)}
+</style></head><body><main id="wrap">
+<video id="film" playsinline preload="auto" src="https://pub-72e9e2f20fd24867ab095d7021d419db.r2.dev/316_video/316_WEB.mp4?v=corrected-2"></video>
+<div class="ui" aria-label="Playback controls"><button id="play" class="btn" aria-label="Play or pause">▶</button><span id="time" class="label">0:00</span><input id="seek" class="grow" type="range" min="0" max="1" step=".001" value="0" aria-label="Seek"><span id="dur" class="label">8:01</span><input id="vol" type="range" min="0" max="1" step=".01" value="1" aria-label="Volume"><button id="full" class="btn" aria-label="Toggle fullscreen">⛶</button></div>
+<div id="starter"><div class="starter-grid"><div class="starter-top"><span>316</span><span id="length">08:01</span></div><div class="starter-center"><button id="start" class="start" aria-label="Play 316"><span class="play-mark" aria-hidden="true"></span><span class="start-label">PLAY</span></button></div><div class="starter-bottom"><span>158 BPM</span><span class="system-id">STATE / INDETERMINATE</span></div></div><div id="status" role="status"></div></div>
+</main><script>
+const $=id=>document.getElementById(id), film=$('film'),wrap=$('wrap'),starter=$('starter'),start=$('start'),play=$('play'),seek=$('seek'),vol=$('vol'),status=$('status');
+let timer, pending=false;
+const fmt=t=>Number.isFinite(t)?Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0'):'0:00';
+function update(){ $('time').textContent=fmt(film.currentTime); if(Number.isFinite(film.duration)){seek.value=film.currentTime/film.duration;$('dur').textContent=fmt(film.duration);$('length').textContent=fmt(film.duration).padStart(5,'0');}play.textContent=film.paused?'▶':'❚❚'; }
+function reveal(){wrap.classList.add('ui-open');clearTimeout(timer);if(!film.paused)timer=setTimeout(()=>{if(!wrap.querySelector('.ui').contains(document.activeElement))wrap.classList.remove('ui-open');},2400);}
+function fail(){pending=false;start.disabled=false;starter.classList.remove('loading');status.textContent='Unable to play — try again';}
+function begin(){if(pending)return;pending=true;start.disabled=true;starter.classList.add('loading');status.textContent='Loading';if(film.error)film.load();film.play().catch(fail);}
+start.onclick=begin;
+film.addEventListener('playing',()=>{if(pending){pending=false;starter.hidden=true;starter.classList.remove('loading');start.disabled=false;status.textContent='';wrap.classList.add('active');wrap.classList.remove('ui-open');}else reveal();update();});
+film.addEventListener('error',()=>{starter.hidden=false;fail();});
+film.addEventListener('pause',()=>{update();if(starter.hidden)reveal();});
+film.addEventListener('ended',()=>{film.currentTime=0;starter.hidden=false;wrap.classList.remove('active','ui-open');update();});
+function toggle(){if(!starter.hidden){begin();return;}if(film.paused)film.play().catch(fail);else film.pause();}
+play.onclick=toggle;seek.oninput=()=>{if(Number.isFinite(film.duration))film.currentTime=Number(seek.value)*film.duration;reveal();};vol.oninput=()=>{film.volume=Number(vol.value);reveal();};
+$('full').onclick=()=>{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});else if(wrap.requestFullscreen)wrap.requestFullscreen().catch(()=>{});else if(film.webkitEnterFullscreen)film.webkitEnterFullscreen();};
+for(const ev of ['timeupdate','loadedmetadata','durationchange'])film.addEventListener(ev,update);
+wrap.addEventListener('pointermove',()=>{if(starter.hidden)reveal();});film.addEventListener('click',()=>{if(starter.hidden)reveal();});wrap.querySelector('.ui').addEventListener('focusout',()=>{if(starter.hidden)reveal();});
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&!/BUTTON|INPUT/.test(e.target.tagName)){e.preventDefault();toggle();}});
+</script></body></html>
